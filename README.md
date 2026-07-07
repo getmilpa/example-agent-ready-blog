@@ -17,11 +17,29 @@
 [![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.3-777bb4.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-This isn't a tutorial about the loop — it's the loop, wired end to end, in ~940 lines of
-application code — of which ~440 implement every framework seam (container, events,
-capability graph, router, kernel); the seams table below is accurate to the line. Three
-plugins (provides, requires, exposes), three agent-callable tools, one human-verification
-gate, and a read-only blog that only ever changes because the loop ran.
+**This repo doesn't teach you how to build a blog. It teaches you how to make a mutation
+agent-ready without losing human control.**
+
+Most examples let agents mutate state directly. This one does not. Every mutation enters
+through a declared tool, passes through a confirmation/verification seam, and only becomes
+application state through an event. The blog is just the smallest honest thing worth mutating.
+
+```mermaid
+flowchart TD
+    A["Agent or human"] --> B["ToolRegistry"]
+    B --> C["publish_post — mutating"]
+    C --> D{"Confirm gate<br/>(registry)"}
+    D -->|"confirm_token redeemed"| E["Verification seam<br/>(HumanVerifier)"]
+    E -.->|"⚡ verification.requested"| F{"Human decides"}
+    F -->|approve| G["⚡ verification.granted"]
+    F -->|reject| H["⚡ verification.rejected"]
+    G --> I["BlogPlugin event handler"]
+    I --> J["⚡ post.published — state changed"]
+    H --> K["post stays a draft"]
+```
+
+Prefer a guided tour? Read [`docs/walkthrough.md`](docs/walkthrough.md) — seven files, in
+the order that makes the loop click.
 
 ## Quickstart
 
@@ -77,10 +95,65 @@ for this example.
 | **event** | Every step above fires through one shared dispatcher — `verification.requested` / `verification.granted` / `verification.rejected` / `post.published` — printed live by name | `Milpa\Interfaces\Event\MilpaEventDispatcherInterface` (`milpa/core`), implemented here by `App\EventDispatcher` |
 | **result** | `BlogPlugin`'s `verification.granted` handler flips the post to `published` and dispatches `post.published` — the result arrives *via event*, not a return value | `src/Plugins/BlogPlugin/BlogPlugin.php` (this repo) |
 
+## What an agent sees
+
+The tools are transport-agnostic: what follows is the registry's own
+`getToolSummaries()` output — the exact catalog an MCP host (or any other transport)
+would list. This is real output, not documentation prose:
+
+```json
+[
+  {
+    "name": "publish_post",
+    "description": "Publish a draft post (requires human verification)",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "id": { "type": "integer", "description": "Post id" } },
+      "required": ["id"]
+    }
+  },
+  {
+    "name": "create_post",
+    "description": "Create a draft post",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Post title" },
+        "body":  { "type": "string", "description": "Post body" }
+      },
+      "required": ["title", "body"]
+    }
+  }
+]
+```
+
+(`list_posts` and `human_verify` are also listed — run
+`$kernel->registry()->getToolSummaries()` to see the full catalog.)
+
+From the agent's side, publishing is a two-call choreography — it never mutates on the
+first try:
+
+1. `publish_post(id: 1)` → the registry intercepts (the tool is `mutating`) and returns a
+   `confirm_token` instead of running the tool.
+2. `publish_post(id: 1, confirm_token: …)` → the tool runs, asks the verification seam,
+   and returns `pending_verification` with a `request_id`.
+3. The actual state change arrives **by event** (`verification.granted` →
+   `post.published`), never as a return value the agent can force.
+
+**About `human_verify`** (the name comes from `milpa/tool-runtime`): it *requests or
+resolves* a verification — it does not make anyone human. Its `principal` argument is an
+opaque string, and the schema itself says who may resolve is **the host's problem**: the
+runtime trusts the host to authenticate principals. In this example the only resolution
+channel wired is the terminal prompt — an agent calling `human_verify` with
+`decision: grant` would still be an unauthenticated principal unless *you* build the
+policy layer that says otherwise. That is the seam doing its job: the framework hands you
+the gate; guarding it is explicitly your half of the contract.
+
 ## What implements what
 
 The three published packages define the seams; this repo implements the smallest possible
-host around them — on purpose, so you can read every line:
+host around them — ~940 lines of application code, of which ~440 implement every framework
+seam. On purpose, so you can read every line:
 
 | Unit | Lines | Implements | Notes |
 |---|---|---|---|

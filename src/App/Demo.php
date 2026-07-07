@@ -36,7 +36,7 @@ final class Demo
         $this->say('plugin → capability → tool → verification → event → result');
         $this->say('');
         $this->say('✔ Capability graph: StoragePlugin provides PostStorage → BlogPlugin requires it');
-        $names = array_map(static fn (array $t) => $t['name'], $registry->getTools());
+        $names = array_map(static fn (array $t) => $t['name'], $registry->getToolSummaries());
         sort($names);
         $this->say('✔ ' . \count($this->kernel->plugins()) . ' plugins booted · tools: ' . implode(', ', $names));
 

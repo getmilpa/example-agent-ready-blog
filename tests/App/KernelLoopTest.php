@@ -28,7 +28,7 @@ final class KernelLoopTest extends TestCase
 
     public function testBootRegistersTheFourTools(): void
     {
-        $names = array_map(static fn (array $t) => $t['name'], $this->kernel->registry()->getTools());
+        $names = array_map(static fn (array $t) => $t['name'], $this->kernel->registry()->getToolSummaries());
         sort($names);
         $this->assertSame(['create_post', 'human_verify', 'list_posts', 'publish_post'], $names);
     }

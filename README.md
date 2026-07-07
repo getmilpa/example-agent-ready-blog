@@ -1,9 +1,19 @@
+<p align="center">
+  <a href="https://github.com/getmilpa">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/getmilpa/core/main/art/lockup/milpa-lockup-v-color-dark.svg">
+      <img src="https://raw.githubusercontent.com/getmilpa/core/main/art/lockup/milpa-lockup-v-color-light.svg" alt="Milpa" width="300">
+    </picture>
+  </a>
+</p>
+
 # Milpa Example: Agent-Ready Blog
 
 > The Milpa loop, live: `plugin → capability → tool → verification → event → result` —
 > as a tiny agent-ready blog you can run in two commands.
 
 [![CI](https://github.com/getmilpa/example-agent-ready-blog/actions/workflows/ci.yml/badge.svg)](https://github.com/getmilpa/example-agent-ready-blog/actions/workflows/ci.yml)
+[![Packagist](https://img.shields.io/packagist/v/milpa/example-agent-ready-blog.svg)](https://packagist.org/packages/milpa/example-agent-ready-blog)
 [![PHP](https://img.shields.io/badge/php-%E2%89%A5%208.3-777bb4.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
@@ -113,8 +123,8 @@ issues via [SECURITY.md](SECURITY.md), and note that this project follows a
 
 ## License
 
-[Apache-2.0](LICENSE) © the Milpa authors.
+[Apache-2.0](LICENSE) © TeamX Agency.
 
 ---
 
-Milpa is designed, built, and maintained by **[TeamX Agency](https://teamx.agency)**.
+Milpa is designed, built, and maintained by **[TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=example-agent-ready-blog)**.

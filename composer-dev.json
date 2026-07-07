@@ -1,0 +1,58 @@
+{
+  "name": "milpa/example-agent-ready-blog",
+  "description": "Runnable example of the Milpa loop — plugin → capability → tool → verification → event → result — as a tiny agent-ready blog.",
+  "type": "project",
+  "license": "Apache-2.0",
+  "require": {
+    "php": ">=8.3",
+    "milpa/core": "@dev",
+    "milpa/http": "@dev",
+    "milpa/tool-runtime": "@dev",
+    "psr/log": "^3",
+    "nyholm/psr7": "^1.8",
+    "nyholm/psr7-server": "^1.1"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.5",
+    "phpstan/phpstan": "^2.1",
+    "friendsofphp/php-cs-fixer": "^3.65"
+  },
+  "autoload": {
+    "psr-4": {
+      "Milpa\\ExampleBlog\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Milpa\\ExampleBlog\\Tests\\": "tests/"
+    }
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-core",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-http",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-tool-runtime",
+      "options": {
+        "symlink": true
+      }
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}

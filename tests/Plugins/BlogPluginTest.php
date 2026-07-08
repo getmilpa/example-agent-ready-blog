@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Tests\Plugins;
 
-use Milpa\ExampleBlog\App\Container;
-use Milpa\ExampleBlog\App\EventDispatcher;
+use Milpa\Container\DIContainer;
+use Milpa\Eventing\EventDispatcher;
 use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ExampleBlog\Blog\PostStorageInterface;
 use Milpa\ExampleBlog\Plugins\BlogPlugin\BlogPlugin;
 use Milpa\ExampleBlog\Plugins\StoragePlugin\JsonPostStorage;
 use Milpa\Interfaces\Event\MilpaEventDispatcherInterface;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 final class BlogPluginTest extends TestCase
 {
@@ -21,8 +22,8 @@ final class BlogPluginTest extends TestCase
         $storage = new JsonPostStorage($file);
         $storage->save(new Post(1, 'T', 'B', 'draft', '2026-07-07T00:00:00+00:00', null));
 
-        $c = new Container();
-        $dispatcher = new EventDispatcher();
+        $c = new DIContainer();
+        $dispatcher = new EventDispatcher(new NullLogger());
         $c->registerService(MilpaEventDispatcherInterface::class, $dispatcher);
         $c->registerService(PostStorageInterface::class, $storage);
 
@@ -45,8 +46,8 @@ final class BlogPluginTest extends TestCase
         $storage = new JsonPostStorage($file);
         $storage->save(new Post(1, 'T', 'B', 'draft', '2026-07-07T00:00:00+00:00', null));
 
-        $c = new Container();
-        $dispatcher = new EventDispatcher();
+        $c = new DIContainer();
+        $dispatcher = new EventDispatcher(new NullLogger());
         $c->registerService(MilpaEventDispatcherInterface::class, $dispatcher);
         $c->registerService(PostStorageInterface::class, $storage);
 

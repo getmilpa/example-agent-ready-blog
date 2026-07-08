@@ -28,7 +28,11 @@ final class StoragePlugin implements PluginInterface
 
     public function boot(): void
     {
-        $file = $this->storageFile ?? getcwd() . '/var/posts.json';
+        // milpa/runtime instantiates plugins as `new StoragePlugin($container)` (the config-driven
+        // registry cannot pass constructor args), so an explicit path arrives via the
+        // MILPA_BLOG_STORAGE env var, set by App\Kernel::boot() / bin/mcp-server.php. The
+        // constructor arg still wins when a plugin is built directly (e.g. a unit test).
+        $file = $this->storageFile ?? (getenv('MILPA_BLOG_STORAGE') ?: getcwd() . '/var/posts.json');
         $this->container->registerService(PostStorageInterface::class, new JsonPostStorage($file));
     }
 

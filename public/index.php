@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-use Milpa\ExampleBlog\App\Http\Router;
 use Milpa\ExampleBlog\App\Kernel;
 use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\Runtime\Http\Router;
 use Milpa\Http\HttpMethod;
 use Milpa\Http\Routing\MatchStatus;
 use Milpa\Http\Routing\Route;

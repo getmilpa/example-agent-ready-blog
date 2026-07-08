@@ -6,8 +6,8 @@ namespace Milpa\ExampleBlog\Blog;
 
 /**
  * The capability StoragePlugin PROVIDES and BlogPlugin REQUIRES — the "A
- * provee / B requiere" edge of the Milpa loop, checked by CapabilityGraph
- * before any plugin boots.
+ * provee / B requiere" edge of the Milpa loop, checked by milpa/runtime's
+ * capability-graph gate (core's CapabilityGraphChecker) before any plugin boots.
  */
 interface PostStorageInterface
 {

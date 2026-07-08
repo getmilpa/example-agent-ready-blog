@@ -1,7 +1,8 @@
 # DX friction log
 
 Friction found while consuming the published packages (`milpa/core`, `milpa/http`,
-`milpa/tool-runtime`) from Packagist, building this example end to end. Reported upstream.
+`milpa/tool-runtime`, `milpa/mcp-server`) from Packagist, building this example end to end.
+Reported upstream.
 
 ## Routing (`milpa/http`) + read-only view
 
@@ -102,3 +103,70 @@ Friction found while consuming the published packages (`milpa/core`, `milpa/http
   the latter and documented it in the class docblock, but the contract itself doesn't say which
   is expected. Worth closing in core: either "MAY dispatch synchronously if no queue is
   configured" or "MUST dispatch via queue, and MUST fail loudly if none is wired."
+
+## MCP transport (`milpa/mcp-server` 0.1.0) — first real consumer
+
+This example is (as far as we could tell) the first thing outside `milpa/mcp-server`'s own
+test suite to drive `JsonRpcService` over a real transport instead of calling `handle()`
+in-process. Everything below surfaced building `bin/mcp-server.php` + the
+`proc_open`-backed `tests/App/McpStdioTest.php`.
+
+- **The biggest one: `milpa/tool-runtime`'s `mcp` channel policy silently `FORBID`s every
+  single `tools/call` unless you pass a non-empty `principal`.** `PolicyGate`'s built-in
+  `channelPolicies['mcp']` is `['allow_all' => false, 'require_auth' => true]`
+  (`vendor/milpa/tool-runtime/src/PolicyGate.php`) — so `ToolContext::mcp($requestId)`
+  called the way its own docblock's *deprecated, scopes-omitted* form suggests (or with
+  `principal: null`, the constructor default) authorizes *nothing*: every tool call comes
+  back `success: false, error: "Authentication required for channel: mcp"`, including
+  non-mutating reads like `list_posts`. Nothing about this is visible from
+  `JsonRpcService`'s side — its own docblock says the host "resolves the caller into a
+  `ToolContext`" and stops there, with zero pointer to the fact that the `mcp` *channel
+  string itself* (not anything `JsonRpcService` does) carries a hard auth requirement one
+  layer down in `tool-runtime`. For a **no-auth, process-trust transport** — exactly
+  the shape this design doc asked for, and a completely reasonable first thing to build
+  against a local stdio MCP server — there is no documented "I have no auth, but I trust
+  this whole process" recipe anywhere in `milpa/mcp-server` or `milpa/tool-runtime`.
+  We landed on passing a fixed `principal: 'stdio'` with `scopes: ['*']`
+  (`bin/mcp-server.php`), mirroring how `ToolContext::cli()` hard-codes `principal: 'cli'`
+  for the same "no real auth, but the channel police accepts a hard-coded identity"
+  purpose — but we only found `ToolContext::cli()`'s pattern by reading the source, not
+  from any doc. Worth a documented `ToolContext` factory (or at least a docblock example
+  on `PolicyGate::$channelPolicies['mcp']`) for "trusted local stdio server" the same way
+  `cli` already gets one for free.
+- **`JsonRpcService::handle()` has a mixed throw/return error contract that pushes work
+  onto every transport.** For a well-formed-but-unknown method it *returns* a JSON-RPC
+  `error` member (as documented); for a malformed envelope (missing/wrong `"jsonrpc"`,
+  missing `"method"`) it *throws* a raw `\Exception` instead
+  (`vendor/milpa/mcp-server/src/JsonRpcService.php:54-64`, outside the method's own
+  try/catch). The class docblock does say this explicitly ("Only a malformed envelope …
+  throws, since there is no `id` to safely key a response on"), so it's not undocumented —
+  but it means every transport has to reimplement the same
+  `['jsonrpc' => '2.0', 'error' => ['code' => $e->getCode(), 'message' => $e->getMessage()], 'id' => …]`
+  shape `JsonRpcService` already builds for every *other* error path, just to catch the one
+  case it opted out of. `bin/mcp-server.php`'s `catch (\Throwable $e)` block exists
+  entirely for this. A `handle()` that always returns an array (using `id: null` for the
+  unkeyable case, exactly like the JSON-RPC spec's own parse-error example) would let every
+  transport drop that duplicate branch.
+- **Notification suppression is 100% the transport's job, and `handle()`'s return value
+  gives no signal that it should have been suppressed.** JSON-RPC notifications (no `"id"`
+  member) must get zero response bytes — but `JsonRpcService::handle()` happily builds and
+  returns a full `{"jsonrpc":"2.0","result":{...},"id":null}` envelope for
+  `notifications/initialized` (via `$request['id'] ?? null`), indistinguishable in shape
+  from a legitimate request whose `id` was explicitly `null`. The transport has to inspect
+  the *original raw request* for `array_key_exists('id', $request)` *before* ever calling
+  `handle()` — and specifically `array_key_exists`, not `isset()`, since `isset()` treats
+  an explicit `{"id": null}` the same as a missing key and would misclassify it. None of
+  this is called out in the package (the class docblock's closest statement — "a host
+  adapter owns … encoding the response back onto its transport of choice" — reads as
+  generic transport plumbing, not a pointer to this specific spec-compliance trap). Worth a
+  docblock note on `handle()` itself: "callers MUST suppress the response when the
+  original request had no `id` member."
+- **Positive counter-example, worth naming**: once the `mcp` channel/principal issue above
+  was worked around, `tools/call`'s wire shape
+  (`{"content": [{"type": "text", "text": "<json-encoded ToolResult>"}]}`) matched the MCP
+  spec's tool-result envelope and this repo's registry choreography exactly — zero
+  adaptation needed. Same for `tool-runtime` 0.2.1's `getToolSummaries()` fix
+  (`"properties": {}` instead of `"properties": []` for zero-argument tools): verified
+  byte-for-byte on the real wire in `McpStdioTest::testFullChoreographyGrantPath` by
+  asserting on the raw JSON line, not the PHP-decoded array (`json_decode` collapses `{}`
+  and `[]` to the same empty-array value and would have silently hidden a regression).

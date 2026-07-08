@@ -1,11 +1,11 @@
-# Walkthrough — seven files, in the order that makes the loop click
+# Walkthrough — eight files, in the order that makes the loop click
 
 This is the guided tour of the repo. Read the files in this order, with these questions in
 mind, and the loop — `plugin → capability → tool → verification → event → result` — stops
 being a diagram and becomes something you could rebuild from memory.
 
-Total reading: ~940 lines. Nothing here is framework magic; every file is application code
-you could have written, implementing contracts from three published packages.
+Total reading: ~1000 lines. Nothing here is framework magic; every file is application code
+you could have written, implementing contracts from four published packages.
 
 ## 1. `bin/blog.php` — the whole app is 18 lines
 
@@ -87,12 +87,33 @@ Notice:
   `bin/blog.php --reject` (must print `still a draft`). It doesn't just test classes —
   it tests the thesis, both branches of it.
 
+## 8. `bin/mcp-server.php` — the same registry, over MCP stdio
+
+~80 lines. Notice:
+
+- Same two ingredients as `bin/blog.php`: `Kernel::boot()` and the registry off it. Only
+  what wraps them changes — instead of `Demo` narrating to a terminal, it's
+  `milpa/mcp-server`'s `JsonRpcService`, looping over stdin/stdout instead of a prompt.
+- STDOUT is protocol-only: one JSON-RPC 2.0 message per line, `fflush()`ed after every
+  write. Human-readable status goes to STDERR, so nothing pollutes the wire — the same
+  discipline every stdio MCP server needs.
+- Notification handling lives in the transport, not the protocol layer: a request with no
+  `id` member (e.g. `notifications/initialized`) gets no response line at all —
+  `JsonRpcService` itself doesn't decide this, `array_key_exists('id', $request)` here does.
+- `milpa/tool-runtime`'s `mcp` channel policy requires a non-empty `principal`
+  (`require_auth: true`) even with zero real auth wired — miss that and every `tools/call`
+  comes back silently `FORBIDDEN`. This transport passes a fixed `'stdio'` principal to mean
+  exactly what it says: process-level trust, nothing more.
+- `tests/App/McpStdioTest.php` is the one test in this repo that spawns a real subprocess:
+  `proc_open` against this exact file, driving the full grant *and* reject choreography
+  through real OS pipes — the transport contract, proven, not asserted.
+
 ## Where to go next
 
 - Swap `JsonPostStorage` for your own storage: implement `PostStorageInterface`, change
   one `provides:`, and nothing else moves — that's the capability seam paying rent.
 - Add a fourth tool to `BlogTools` with `confirm: true` and watch it inherit the whole
   verification choreography for free.
-- The tools are transport-agnostic: pointing an MCP server at this registry is the natural
-  next example (the `milpa/mcp-server` package published with wave 2 provides exactly that
-  JSON-RPC dispatcher).
+- Point a second MCP host at `bin/mcp-server.php` alongside the first — the registry, the
+  confirm gate, and the verification seam don't know or care how many transports are
+  watching; that's what "transport-agnostic" bought you at stop 5.

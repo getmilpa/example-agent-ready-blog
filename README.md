@@ -38,7 +38,7 @@ flowchart TD
     H --> K["post stays a draft"]
 ```
 
-Prefer a guided tour? Read [`docs/walkthrough.md`](docs/walkthrough.md) — seven files, in
+Prefer a guided tour? Read [`docs/walkthrough.md`](docs/walkthrough.md) — eight files, in
 the order that makes the loop click.
 
 ## Quickstart
@@ -149,11 +149,51 @@ channel wired is the terminal prompt — an agent calling `human_verify` with
 policy layer that says otherwise. That is the seam doing its job: the framework hands you
 the gate; guarding it is explicitly your half of the contract.
 
+## The same tools, over MCP — point your agent at it
+
+`bin/mcp-server.php` puts this exact registry — the same four tools, the same
+confirm-token gate, the same verification seam — behind a standard MCP stdio transport
+(`milpa/mcp-server`: JSON-RPC 2.0 over stdin/stdout, one message per line). Point any
+MCP-compatible agent host at it with the `mcpServers` shape most hosts share:
+
+```json
+{
+  "mcpServers": {
+    "agent-ready-blog": {
+      "command": "php",
+      "args": ["/absolute/path/to/blog/bin/mcp-server.php"]
+    }
+  }
+}
+```
+
+Or run it directly to watch the wire, no host required:
+
+```bash
+php bin/mcp-server.php
+```
+
+It logs its own status to STDERR — never STDOUT, which is protocol-only — then reads one
+JSON-RPC 2.0 request per line from STDIN: `initialize`, `notifications/initialized`
+(silently — no response, per the JSON-RPC spec), `tools/list`, `tools/call`. Same
+choreography as "What an agent sees" above, just over a socket instead of an in-process
+call.
+
+**Verification still goes through your human.** This transport carries no auth — process-
+level trust, the same posture as any local stdio MCP server (`milpa/mcp-server` exposes
+`Auth\TokenValidatorInterface` as the seam to HTTP + real auth, unused here). What doesn't
+change: `publish_post` still stops at `pending_verification` and waits for
+`human_verify(subject, decision: "grant"|"reject", principal, request_id)`. When an agent
+hits that gate over MCP, it asks **its own human**, in its own chat — the same rule as the
+terminal demo, just relocated to wherever the agent's human actually is.
+
 ## What implements what
 
-The three published packages define the seams; this repo implements the smallest possible
-host around them — ~940 lines of application code, of which ~440 implement every framework
-seam. On purpose, so you can read every line:
+Three of the four published packages define the seams below; this repo implements the
+smallest possible host around them — ~940 lines of application code, of which ~440
+implement every framework seam. On purpose, so you can read every line. (The fourth,
+`milpa/mcp-server`, is consumed directly by `bin/mcp-server.php` — there's no local
+interface to implement, just a transport to wrap around the same registry.)
 
 | Unit | Lines | Implements | Notes |
 |---|---|---|---|
@@ -174,12 +214,12 @@ You can implement the seams in an afternoon — this repo is the proof.
 - **Mutations enter via tools, not HTTP** — that's the point. The web view
   (`php -S localhost:8080 -t public`) is read-only by design: publishing a post always goes
   through `create_post` → `publish_post` → human verification, whether the caller is a human
-  running `bin/blog.php` or an agent calling the same tools — e.g. over MCP; not wired in
-  this example, the tools are transport-agnostic.
+  running `bin/blog.php` or an agent calling the same tools over MCP (`bin/mcp-server.php`) —
+  the tools are transport-agnostic, and both entry points prove it.
 
 ## The family
 
-This example consumes three published Milpa packages, unmodified, from Packagist:
+This example consumes four published Milpa packages, unmodified, from Packagist:
 
 - [`milpa/core`](https://packagist.org/packages/milpa/core) — the contracts core ·
   [API reference](https://getmilpa.github.io/core/)
@@ -187,6 +227,8 @@ This example consumes three published Milpa packages, unmodified, from Packagist
   contracts · [API reference](https://getmilpa.github.io/http/)
 - [`milpa/tool-runtime`](https://packagist.org/packages/milpa/tool-runtime) — the
   agent-tool-execution engine · [API reference](https://getmilpa.github.io/tool-runtime/)
+- [`milpa/mcp-server`](https://packagist.org/packages/milpa/mcp-server) — the MCP
+  transport core (JSON-RPC 2.0 over the tool registry) · [API reference](https://getmilpa.github.io/mcp-server/)
 
 ## Contributing
 

@@ -170,6 +170,33 @@ final class McpStdioTest extends TestCase
         $this->assertSame(-32700, $response['error']['code']);
     }
 
+    public function testBatchRequestIsRefusedLoudly(): void
+    {
+        $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
+
+        // A JSON-RPC batch (array of requests) must get an explicit refusal — not silence.
+        // A list-array has no "id" key, so without a guard it would be misclassified as a
+        // notification and a batching-capable client would hang on ids 100/101 forever.
+        $batch = [
+            ['jsonrpc' => '2.0', 'method' => 'tools/list', 'id' => 100],
+            ['jsonrpc' => '2.0', 'method' => 'tools/list', 'id' => 101],
+        ];
+        fwrite($this->stdin, json_encode($batch) . "\n");
+        fflush($this->stdin);
+
+        $line = $this->readLine();
+        self::assertNotNull($line, 'expected an explicit batch-refusal response line');
+        $response = json_decode($line, true);
+
+        $this->assertSame('2.0', $response['jsonrpc']);
+        $this->assertNull($response['id']);
+        $this->assertSame(-32600, $response['error']['code']);
+
+        // The server must still be alive and answering single requests afterwards.
+        $after = $this->call(['jsonrpc' => '2.0', 'method' => 'tools/list', 'id' => 2]);
+        $this->assertArrayHasKey('tools', $after['result']);
+    }
+
     /**
      * @param array<string, mixed> $args
      *

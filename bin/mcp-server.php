@@ -41,6 +41,19 @@ while (($line = fgets(STDIN)) !== false) {
         continue;
     }
 
+    // A JSON-RPC batch decodes as a PHP list, which would otherwise fall through the
+    // notification check below (a list has no "id" key) and die without a single response
+    // byte — hanging any batching-capable client. JsonRpcService::handle() is
+    // single-request-only, so batches are refused loudly instead of swallowed silently.
+    if (array_is_list($request)) {
+        $writeLine([
+            'jsonrpc' => '2.0',
+            'error' => ['code' => -32600, 'message' => 'Batch requests are not supported'],
+            'id' => null,
+        ]);
+        continue;
+    }
+
     // A JSON-RPC notification has no "id" member at all — not just a null one — and MUST
     // NOT receive a response (JSON-RPC 2.0 §4.1). array_key_exists (not isset) is required:
     // isset() would misclassify an explicit {"id": null, ...} request as a notification.

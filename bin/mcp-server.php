@@ -41,14 +41,9 @@ while (($line = fgets(STDIN)) !== false) {
         continue;
     }
 
-    // This transport carries no auth (process-level trust — see README). The `mcp` channel
-    // policy in milpa/tool-runtime's PolicyGate requires a non-empty principal regardless
-    // (`require_auth: true`): pass one explicitly, or every tools/call comes back FORBIDDEN.
-    $ctx = ToolContext::mcp(
-        requestId: (string) ($request['id'] ?? uniqid('mcp-', true)),
-        principal: 'stdio',
-        scopes: ['*'],
-    );
+    // This transport carries no auth: ToolContext::stdio() (tool-runtime 0.3) is the
+    // documented context for exactly this case — process-level trust, principal 'stdio'.
+    $ctx = ToolContext::stdio((string) ($request['id'] ?? uniqid('mcp-', true)));
 
     // Since milpa/mcp-server 0.2 the protocol layer owns the whole JSON-RPC contract:
     // envelope errors and batch refusals come back as well-formed error arrays (never

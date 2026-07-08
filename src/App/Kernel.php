@@ -11,7 +11,7 @@ use Milpa\Interfaces\Event\MilpaEventDispatcherInterface;
 use Milpa\Interfaces\Tooling\ToolProviderInterface;
 use Milpa\ToolRuntime\ToolRegistry;
 use Milpa\ToolRuntime\Verification\HumanVerifier;
-use Milpa\ToolRuntime\Verification\HumanVerifyTool;
+use Milpa\ToolRuntime\Verification\VerificationTool;
 use Psr\Log\NullLogger;
 
 /**
@@ -51,7 +51,7 @@ final class Kernel
         }
 
         $registry = new ToolRegistry(new NullLogger());
-        (new HumanVerifyTool($verifier))->register($registry);
+        (new VerificationTool($verifier))->register($registry);
         foreach ($plugins as $plugin) {
             if ($plugin instanceof ToolProviderInterface) {
                 $plugin->registerTools($registry);

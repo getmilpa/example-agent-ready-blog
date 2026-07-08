@@ -91,7 +91,7 @@ final class McpStdioTest extends TestCase
         $toolsList = json_decode($toolsListLine, true);
         $names = array_map(static fn (array $t): string => $t['name'], $toolsList['result']['tools']);
         sort($names);
-        $this->assertSame(['create_post', 'human_verify', 'list_posts', 'publish_post'], $names);
+        $this->assertSame(['create_post', 'list_posts', 'publish_post', 'request_verification', 'resolve_verification'], $names);
 
         $id = $this->callTool('create_post', ['title' => 'Hello MCP', 'body' => 'over stdio'], 3)['data']['id'];
 
@@ -111,10 +111,11 @@ final class McpStdioTest extends TestCase
         $requestId = $pending['data']['request_id'];
         $this->assertNotEmpty($requestId);
 
-        // Call 3 of 3: the agent's human grants the verification via human_verify — the
-        // actual state change (draft -> published) happens as a reaction to this, inside
-        // BlogPlugin's verification.granted handler, not as this call's return value.
-        $verify = $this->callTool('human_verify', [
+        // Call 3 of 3: the agent's human grants the verification via resolve_verification
+        // (tool-runtime 0.3 split: requesting and resolving are separate tools, so policy
+        // can restrict WHO may resolve). The actual state change (draft -> published)
+        // happens as a reaction, inside BlogPlugin's verification.granted handler.
+        $verify = $this->callTool('resolve_verification', [
             'subject' => $subject,
             'decision' => 'grant',
             'principal' => 'human:mcp-stdio-test',
@@ -139,7 +140,7 @@ final class McpStdioTest extends TestCase
         $subject = $pending['data']['subject'];
         $requestId = $pending['data']['request_id'];
 
-        $verify = $this->callTool('human_verify', [
+        $verify = $this->callTool('resolve_verification', [
             'subject' => $subject,
             'decision' => 'reject',
             'principal' => 'human:mcp-stdio-test',

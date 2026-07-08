@@ -57,7 +57,7 @@ milpa · example-agent-ready-blog — the loop, live
 plugin → capability → tool → verification → event → result
 
 ✔ Capability graph: StoragePlugin provides PostStorage → BlogPlugin requires it
-✔ 3 plugins booted · tools: create_post, human_verify, list_posts, publish_post
+✔ 3 plugins booted · tools: create_post, list_posts, publish_post, request_verification, resolve_verification
 
 → create_post("Hello Milpa") … draft #1 created (not mutating-gated: no friction)
 → publish_post(#1) … INTERCEPTED by the registry confirm gate → confirm_token 867c9ca7…
@@ -127,7 +127,7 @@ would list. This is real output, not documentation prose:
 ]
 ```
 
-(`list_posts` and `human_verify` are also listed — run
+(`list_posts`, `request_verification` and `resolve_verification` are also listed — run
 `$kernel->registry()->getToolSummaries()` to see the full catalog.)
 
 From the agent's side, publishing is a two-call choreography — it never mutates on the
@@ -140,18 +140,19 @@ first try:
 3. The actual state change arrives **by event** (`verification.granted` →
    `post.published`), never as a return value the agent can force.
 
-**About `human_verify`** (the name comes from `milpa/tool-runtime`): it *requests or
-resolves* a verification — it does not make anyone human. Its `principal` argument is an
-opaque string, and the schema itself says who may resolve is **the host's problem**: the
-runtime trusts the host to authenticate principals. In this example the only resolution
-channel wired is the terminal prompt — an agent calling `human_verify` with
-`decision: grant` would still be an unauthenticated principal unless *you* build the
-policy layer that says otherwise. That is the seam doing its job: the framework hands you
-the gate; guarding it is explicitly your half of the contract.
+**About the verification tools** (from `milpa/tool-runtime` 0.3): requesting and resolving
+are *separate tools* — `request_verification` opens one (no decision, no principal in its
+schema at all), `resolve_verification` closes it (`request_id` + `decision` + `principal`
+required). They're split precisely so policy can treat them differently: requests can stay
+open to any agent while `resolve_verification` is restricted by principal (tool-runtime's
+`resolveScopes` option — see its README for the working policy example). The `principal`
+remains an opaque string: the runtime trusts the host to authenticate it, and in this
+example nothing does — that is the seam doing its job. The framework hands you the gate;
+guarding it is explicitly your half of the contract.
 
 ## The same tools, over MCP — point your agent at it
 
-`bin/mcp-server.php` puts this exact registry — the same four tools, the same
+`bin/mcp-server.php` puts this exact registry — the same five tools, the same
 confirm-token gate, the same verification seam — behind a standard MCP stdio transport
 (`milpa/mcp-server`: JSON-RPC 2.0 over stdin/stdout, one message per line). Point any
 MCP-compatible agent host at it with the `mcpServers` shape most hosts share:
@@ -183,7 +184,7 @@ call.
 level trust, the same posture as any local stdio MCP server (`milpa/mcp-server` exposes
 `Auth\TokenValidatorInterface` as the seam to HTTP + real auth, unused here). What doesn't
 change: `publish_post` still stops at `pending_verification` and waits for
-`human_verify(subject, decision: "grant"|"reject", principal, request_id)`. When an agent
+`resolve_verification(request_id, decision: "grant"|"reject", principal)`. When an agent
 hits that gate over MCP, it asks **its own human**, in its own chat — the same rule as the
 terminal demo, just relocated to wherever the agent's human actually is.
 

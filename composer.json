@@ -7,6 +7,7 @@
     "php": ">=8.3",
     "milpa/core": "^0.3",
     "milpa/http": "^0.1",
+    "milpa/mcp-server": "^0.1",
     "milpa/tool-runtime": "^0.2",
     "psr/log": "^3",
     "nyholm/psr7": "^1.8",

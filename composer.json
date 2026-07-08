@@ -5,10 +5,10 @@
   "license": "Apache-2.0",
   "require": {
     "php": ">=8.3",
-    "milpa/core": "^0.3",
+    "milpa/core": "^0.4",
     "milpa/http": "^0.1",
     "milpa/mcp-server": "^0.2",
-    "milpa/tool-runtime": "^0.3",
+    "milpa/tool-runtime": "^0.4",
     "psr/log": "^3",
     "nyholm/psr7": "^1.8",
     "nyholm/psr7-server": "^1.1"

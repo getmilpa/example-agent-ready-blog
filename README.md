@@ -127,8 +127,16 @@ would list. This is real output, not documentation prose:
 ]
 ```
 
-(`list_posts`, `request_verification` and `resolve_verification` are also listed — run
-`$kernel->registry()->getToolSummaries()` to see the full catalog.)
+The full catalog has five tools, in two categories:
+
+| Category | Tools | Purpose |
+|---|---|---|
+| **Application** | `create_post`, `list_posts`, `publish_post` | the blog's own operations |
+| **Runtime / control** | `request_verification`, `resolve_verification` | the verification seam |
+
+They are listed together because **MCP exposes tools, not architectural layers** — policy
+decides which principals may call each one. (Run `$kernel->registry()->getToolSummaries()`
+to see the whole list.)
 
 From the agent's side, publishing is a two-call choreography — it never mutates on the
 first try:
@@ -140,22 +148,21 @@ first try:
 3. The actual state change arrives **by event** (`verification.granted` →
    `post.published`), never as a return value the agent can force.
 
-**About the verification tools** (from `milpa/tool-runtime` 0.3): requesting and resolving
-are *separate tools* — `request_verification` opens one (no decision, no principal in its
-schema at all), `resolve_verification` closes it (`request_id` + `decision` + `principal`
-required). They're split precisely so policy can treat them differently: requests can stay
-open to any agent while `resolve_verification` is restricted by principal (tool-runtime's
-`resolveScopes` option — see its README for the working policy example). The `principal`
-remains an opaque string: the runtime trusts the host to authenticate it, and in this
-example nothing does — that is the seam doing its job. The framework hands you the gate;
-guarding it is explicitly your half of the contract.
+The two verification tools are split (`request_verification` opens, `resolve_verification`
+closes) precisely so policy can treat them differently — the security boundary below spells
+out what that means and what this demo deliberately leaves to you.
 
-## The same tools, over MCP — point your agent at it
+## The same tools, over MCP
 
-`bin/mcp-server.php` puts this exact registry — the same five tools, the same
-confirm-token gate, the same verification seam — behind a standard MCP stdio transport
-(`milpa/mcp-server`: JSON-RPC 2.0 over stdin/stdout, one message per line). Point any
-MCP-compatible agent host at it with the `mcpServers` shape most hosts share:
+`bin/mcp-server.php` puts this exact registry — the same five tools, the same confirm-token
+gate, the same verification seam — behind a standard MCP stdio transport (`milpa/mcp-server`:
+JSON-RPC 2.0 over stdin/stdout, one message per line).
+
+It is not a second API. It is the same core, wrapped: `Kernel::boot()` and the registry are
+unchanged; only the outer loop differs (stdin/stdout instead of a terminal prompt).
+
+Point an **MCP-compatible host that supports local stdio servers** at it — Claude Desktop,
+Cursor, Windsurf and similar share this `mcpServers` config shape:
 
 ```json
 {
@@ -174,19 +181,66 @@ Or run it directly to watch the wire, no host required:
 php bin/mcp-server.php
 ```
 
-It logs its own status to STDERR — never STDOUT, which is protocol-only — then reads one
-JSON-RPC 2.0 request per line from STDIN: `initialize`, `notifications/initialized`
-(silently — no response, per the JSON-RPC spec), `tools/list`, `tools/call`. Same
-choreography as "What an agent sees" above, just over a socket instead of an in-process
-call.
+STDOUT is protocol-only; human-readable status goes to STDERR (a stray `echo` on STDOUT
+corrupts the wire). `notifications/initialized` gets no response line, per the JSON-RPC spec.
 
-**Verification still goes through your human.** This transport carries no auth — process-
-level trust, the same posture as any local stdio MCP server (`milpa/mcp-server` exposes
-`Auth\TokenValidatorInterface` as the seam to HTTP + real auth, unused here). What doesn't
-change: `publish_post` still stops at `pending_verification` and waits for
-`resolve_verification(request_id, decision: "grant"|"reject", principal)`. When an agent
-hits that gate over MCP, it asks **its own human**, in its own chat — the same rule as the
-terminal demo, just relocated to wherever the agent's human actually is.
+### A minimal session
+
+```
+→ {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18",...}}
+→ {"jsonrpc":"2.0","method":"notifications/initialized"}            (no response line)
+→ {"jsonrpc":"2.0","id":2,"method":"tools/list"}
+← {"jsonrpc":"2.0","id":2,"result":{"tools":[ ...5 tools... ]}}
+→ tools/call create_post {"title":"Hello","body":"..."}             → draft #1
+→ tools/call publish_post {"id":1}                                  → confirm_token (intercepted)
+→ tools/call publish_post {"id":1,"confirm_token":"…"}              → pending_verification, request_id
+→ tools/call resolve_verification {"request_id":"…","decision":"grant","principal":"…"}
+←   verification.granted → post.published (the state change arrives by event)
+```
+
+### Two gates, different jobs
+
+Publishing crosses **two** independent gates — a common point of confusion, so be explicit:
+
+| Gate | Protects | Asks |
+|---|---|---|
+| **Confirm gate** (registry) | tool *execution* | "Are you sure this mutating tool should run at all?" |
+| **Verification seam** (`HumanVerifier`) | domain *state transition* | "Should this change become real application state?" |
+
+The confirm gate is generic registry-level safety; the verification seam is where policy,
+human, or business approval lives. A mutating tool crosses both.
+
+### ⚠️ Security boundary of this MCP example
+
+**This example demonstrates the verification *seam*, not a complete identity/auth model — and
+that difference is load-bearing.**
+
+Over local stdio MCP the transport carries no authentication: the **host is trusted** to
+decide who may call each tool (process-level trust). `resolve_verification` is a tool like
+any other on the wire — so **an agent with enough scope could resolve its own verification.**
+That is not a hole in the idea; it is a responsibility boundary this demo deliberately leaves
+to the host.
+
+Two things keep that boundary honest rather than hand-waved:
+
+- **The seam to prevent self-approval already exists.** `request_verification` and
+  `resolve_verification` are separate tools precisely so policy can restrict *who* may resolve
+  — tool-runtime's `resolveScopes` gates it by authenticated principal. This demo doesn't wire
+  an auth policy; production **must**.
+- **The audit trail already records who resolved it.** Every call emits `tool.executed`
+  carrying its `channel` and `principal` — so even under process-trust the resolver is logged,
+  not anonymous.
+
+In production, therefore:
+
+```
+resolve_verification MUST be restricted to an authenticated principal / scopes.
+Over local stdio the host decides who calls it. Over HTTP, wire milpa/mcp-server's
+Auth\TokenValidatorInterface (unused here) to authenticate the principal first.
+```
+
+The framework hands you the gate; **guarding it is explicitly your half of the contract.**
 
 ## What implements what
 

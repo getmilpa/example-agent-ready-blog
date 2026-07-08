@@ -41,24 +41,6 @@ while (($line = fgets(STDIN)) !== false) {
         continue;
     }
 
-    // A JSON-RPC batch decodes as a PHP list, which would otherwise fall through the
-    // notification check below (a list has no "id" key) and die without a single response
-    // byte — hanging any batching-capable client. JsonRpcService::handle() is
-    // single-request-only, so batches are refused loudly instead of swallowed silently.
-    if (array_is_list($request)) {
-        $writeLine([
-            'jsonrpc' => '2.0',
-            'error' => ['code' => -32600, 'message' => 'Batch requests are not supported'],
-            'id' => null,
-        ]);
-        continue;
-    }
-
-    // A JSON-RPC notification has no "id" member at all — not just a null one — and MUST
-    // NOT receive a response (JSON-RPC 2.0 §4.1). array_key_exists (not isset) is required:
-    // isset() would misclassify an explicit {"id": null, ...} request as a notification.
-    $isNotification = !array_key_exists('id', $request);
-
     // This transport carries no auth (process-level trust — see README). The `mcp` channel
     // policy in milpa/tool-runtime's PolicyGate requires a non-empty principal regardless
     // (`require_auth: true`): pass one explicitly, or every tools/call comes back FORBIDDEN.
@@ -68,26 +50,13 @@ while (($line = fgets(STDIN)) !== false) {
         scopes: ['*'],
     );
 
-    try {
-        $response = $service->handle($request, $ctx);
-    } catch (\Throwable $e) {
-        // JsonRpcService::handle() throws for a malformed envelope (missing/wrong "jsonrpc",
-        // missing "method") instead of returning an error array — there's no id to safely
-        // key a response on internally, so the transport builds it here.
-        $code = $e->getCode();
-        $response = [
-            'jsonrpc' => '2.0',
-            'error' => [
-                'code' => is_int($code) && $code !== 0 ? $code : -32603,
-                'message' => $e->getMessage(),
-            ],
-            'id' => $request['id'] ?? null,
-        ];
-    }
+    // Since milpa/mcp-server 0.2 the protocol layer owns the whole JSON-RPC contract:
+    // envelope errors and batch refusals come back as well-formed error arrays (never
+    // thrown), and notifications — any message without an "id" member — return null.
+    // The transport's only job: write what is non-null, write nothing for null.
+    $response = $service->handle($request, $ctx);
 
-    if ($isNotification) {
-        continue;
+    if ($response !== null) {
+        $writeLine($response);
     }
-
-    $writeLine($response);
 }

@@ -73,7 +73,7 @@ final class McpStdioTest extends TestCase
     public function testFullChoreographyGrantPath(): void
     {
         $init = $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
-        $this->assertSame('2025-03-26', $init['result']['protocolVersion']);
+        $this->assertSame('2025-06-18', $init['result']['protocolVersion']);
 
         // Notifications (no "id" member) MUST NOT get a response line at all — not even an
         // empty one.

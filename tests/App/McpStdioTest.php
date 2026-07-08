@@ -37,19 +37,17 @@ final class McpStdioTest extends TestCase
             2 => ['pipe', 'w'],
         ];
 
-        // getenv() with no argument (not $_ENV) is what reliably carries the full parent
-        // environment regardless of the `variables_order` ini setting — proc_open's $env
-        // argument REPLACES the child's environment entirely rather than merging into it.
-        $env = getenv();
-        $env['MILPA_BLOG_STORAGE'] = $this->storageFile;
-
+        // The temp storage path is injected as bin/mcp-server.php's first argument, which
+        // Kernel::boot() threads through milpa/runtime's config bag — no env var, no global
+        // state. Passing null for proc_open's $env lets the child inherit the parent process
+        // environment unchanged (proc_open otherwise REPLACES the child's environment entirely).
         $projectRoot = \dirname(__DIR__, 2);
         $process = proc_open(
-            [\PHP_BINARY, $projectRoot . '/bin/mcp-server.php'],
+            [\PHP_BINARY, $projectRoot . '/bin/mcp-server.php', $this->storageFile],
             $descriptors,
             $pipes,
             $projectRoot,
-            $env,
+            null,
         );
         self::assertIsResource($process, 'failed to spawn bin/mcp-server.php');
         $this->process = $process;

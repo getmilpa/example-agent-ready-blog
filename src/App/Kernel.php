@@ -39,13 +39,13 @@ final class Kernel
 
     public static function boot(?string $storageFile = null): self
     {
-        // StoragePlugin is booted by the runtime via `new StoragePlugin($container)` — the
-        // config-driven registry cannot pass constructor args (milpa/runtime F1 Fricción #5), so
-        // the storage path travels through the environment, exactly the "read config from an env
-        // var" escape hatch that front sanctioned. bin/mcp-server.php already used this variable.
-        if ($storageFile !== null) {
-            putenv('MILPA_BLOG_STORAGE=' . $storageFile);
-        }
+        $root = \dirname(__DIR__, 2);
+        // StoragePlugin is booted by the runtime via `new StoragePlugin($container)` and the
+        // config-driven registry cannot pass constructor args — so the storage path travels
+        // through milpa/runtime's app-config bag (the `config` key below registers a
+        // Milpa\Runtime\Config the plugin reads in boot()). Still overridable per-call for tests;
+        // defaults to var/posts.json under the host root.
+        $storageFile ??= $root . '/var/posts.json';
 
         $container = new DIContainer();
         $dispatcher = new EventDispatcher(new NullLogger());
@@ -57,10 +57,11 @@ final class Kernel
         (new VerificationTool($verifier))->register($registry);
 
         $runtime = RuntimeKernel::boot([
-            'root' => \dirname(__DIR__, 2),
+            'root' => $root,
             'container' => $container,
             'dispatcher' => $dispatcher,
             'toolRegistry' => $registry,
+            'config' => ['storage' => ['path' => $storageFile]],
             'plugins' => [
                 StoragePlugin::class,
                 BlogPlugin::class,

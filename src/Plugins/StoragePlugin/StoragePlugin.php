@@ -8,6 +8,7 @@ use Milpa\Attributes\PluginMetadata;
 use Milpa\ExampleBlog\Blog\PostStorageInterface;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
+use Milpa\Runtime\Config;
 
 /** Plugin A — PROVIDES the PostStorage capability. */
 #[PluginMetadata(
@@ -22,17 +23,20 @@ final class StoragePlugin implements PluginInterface
 {
     public function __construct(
         private readonly DIContainerInterface $container,
-        private readonly ?string $storageFile = null,
     ) {
     }
 
     public function boot(): void
     {
-        // milpa/runtime instantiates plugins as `new StoragePlugin($container)` (the config-driven
-        // registry cannot pass constructor args), so an explicit path arrives via the
-        // MILPA_BLOG_STORAGE env var, set by App\Kernel::boot() / bin/mcp-server.php. The
-        // constructor arg still wins when a plugin is built directly (e.g. a unit test).
-        $file = $this->storageFile ?? (getenv('MILPA_BLOG_STORAGE') ?: getcwd() . '/var/posts.json');
+        // PluginInterface fixes the constructor to ($container) and milpa/runtime instantiates
+        // plugins as `new StoragePlugin($container)`, so the storage path cannot arrive as a
+        // constructor arg. It travels through the app-config bag milpa/runtime registers from
+        // Kernel::boot()'s `config` key — the seam that replaces BOTH env-var globals and a
+        // widened constructor. See Milpa\Runtime\Config.
+        /** @var Config $config */
+        $config = $this->container->get(Config::class);
+        /** @var string $file */
+        $file = $config->get('storage.path');
         $this->container->registerService(PostStorageInterface::class, new JsonPostStorage($file));
     }
 

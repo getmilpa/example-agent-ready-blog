@@ -11,7 +11,9 @@ require __DIR__ . '/../vendor/autoload.php';
 
 // Point your agent at this process over stdio — same tools, same registry, same
 // verification choreography as bin/blog.php, just a different transport.
-$storageFile = getenv('MILPA_BLOG_STORAGE') ?: null;
+// An optional first argument overrides the storage path (Kernel::boot threads it through
+// milpa/runtime's config bag); it defaults to var/posts.json when omitted.
+$storageFile = $argv[1] ?? null;
 $kernel = Kernel::boot($storageFile);
 $service = new JsonRpcService($kernel->registry());
 

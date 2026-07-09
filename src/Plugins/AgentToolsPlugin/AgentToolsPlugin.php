@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Milpa\ExampleBlog\Plugins\AgentToolsPlugin;
 
 use Milpa\Attributes\PluginMetadata;
+use Milpa\Data\RepositoryInterface;
 use Milpa\EventStore\FileEventStore;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishCampaignProcess;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
 use Milpa\ExampleBlog\Orchestrator\PostDecisionArtifactFactory;
@@ -33,7 +34,7 @@ use Milpa\ToolRuntime\Verification\HumanVerifier;
     site: 'https://github.com/getmilpa/example-agent-ready-blog',
     name: 'AgentToolsPlugin',
     type: 'Tools',
-    requires: [PostStorageInterface::class],
+    requires: [RepositoryInterface::class],
 )]
 final class AgentToolsPlugin implements PluginInterface, ToolProviderInterface
 {
@@ -43,8 +44,8 @@ final class AgentToolsPlugin implements PluginInterface, ToolProviderInterface
 
     public function registerTools(ToolRegistryInterface $registry): void
     {
-        /** @var PostStorageInterface $storage */
-        $storage = $this->container->get(PostStorageInterface::class);
+        /** @var RepositoryInterface<Post> $storage */
+        $storage = $this->container->get(RepositoryInterface::class);
         /** @var HumanVerifier $verifier */
         $verifier = $this->container->get(HumanVerifier::class);
         $scanner = new ToolScanner($registry);

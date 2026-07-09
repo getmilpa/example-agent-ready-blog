@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Orchestrator;
 
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\Data\RepositoryInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\Orchestrator\DecisionSurfaceFactoryInterface;
 use Milpa\Orchestrator\DecisionSurfaceInterface;
 use Milpa\Orchestrator\ProcessInstance;
@@ -14,7 +15,7 @@ use Milpa\Orchestrator\ProcessInstance;
  * gated `review_gate` state — the example's implementation of `milpa/orchestrator`'s {@see
  * DecisionSurfaceFactoryInterface}, injected into the package {@see \Milpa\Orchestrator\HumanGate}.
  *
- * This is exactly the `post_id -> PostStorageInterface -> Post` lookup the greenhouse's inline
+ * This is exactly the `post_id -> RepositoryInterface<Post> -> Post` lookup the greenhouse's inline
  * `HumanGate::openFor()`/`pendingFor()` used to do themselves: the generic engine now delegates
  * "what does this gate's decision surface look like?" to this domain factory, so it never needs to
  * know a `publish_post` instance carries a `post_id` that resolves to a blog {@see
@@ -22,7 +23,10 @@ use Milpa\Orchestrator\ProcessInstance;
  */
 final readonly class PostDecisionArtifactFactory implements DecisionSurfaceFactoryInterface
 {
-    public function __construct(private PostStorageInterface $posts)
+    /**
+     * @param RepositoryInterface<Post> $posts
+     */
+    public function __construct(private RepositoryInterface $posts)
     {
     }
 

@@ -5,19 +5,21 @@ declare(strict_types=1);
 namespace Milpa\ExampleBlog\Plugins\StoragePlugin;
 
 use Milpa\Attributes\PluginMetadata;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\Data\FileRepository;
+use Milpa\Data\RepositoryInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
 use Milpa\Runtime\Config;
 
-/** Plugin A — PROVIDES the PostStorage capability. */
+/** Plugin A — PROVIDES the PostStorage capability, backed by milpa/data's file-JSON repository. */
 #[PluginMetadata(
     version: '0.1.0',
     author: 'Milpa',
     site: 'https://github.com/getmilpa/example-agent-ready-blog',
     name: 'StoragePlugin',
     type: 'Service',
-    provides: [PostStorageInterface::class],
+    provides: [RepositoryInterface::class],
 )]
 final class StoragePlugin implements PluginInterface
 {
@@ -37,7 +39,11 @@ final class StoragePlugin implements PluginInterface
         $config = $this->container->get(Config::class);
         /** @var string $file */
         $file = $config->get('storage.path');
-        $this->container->registerService(PostStorageInterface::class, new JsonPostStorage($file));
+        // milpa/data's FileRepository is the JsonPostStorage this example used to carry inline: the
+        // whole read-modify-write file-JSON collection logic moved upstream, keyed by id, rehydrated
+        // via Post::fromArray. This plugin now only wires it — a FileRepository<Post> bound to the
+        // config-driven path — behind the same RepositoryInterface capability BlogPlugin requires.
+        $this->container->registerService(RepositoryInterface::class, new FileRepository($file, Post::class));
     }
 
     public function install(): void

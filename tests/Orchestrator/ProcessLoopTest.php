@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Tests\Orchestrator;
 
+use Milpa\Data\InMemoryRepository;
 use Milpa\Eventing\EventDispatcher;
 use Milpa\EventStore\Event;
 use Milpa\EventStore\FileEventStore;
@@ -11,7 +12,6 @@ use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
 use Milpa\ExampleBlog\Orchestrator\PostDecisionArtifactFactory;
 use Milpa\ExampleBlog\Orchestrator\PublishPostTerminalListener;
-use Milpa\ExampleBlog\Tests\Orchestrator\Fixtures\InMemoryPostStorage;
 use Milpa\Orchestrator\HumanGate;
 use Milpa\Orchestrator\ProcessDefinitionRegistry;
 use Milpa\Orchestrator\ProcessInstance;
@@ -40,12 +40,13 @@ final class ProcessLoopTest extends TestCase
 {
     private string $path;
 
-    private InMemoryPostStorage $posts;
+    /** @var InMemoryRepository<Post> */
+    private InMemoryRepository $posts;
 
     protected function setUp(): void
     {
         $this->path = sys_get_temp_dir() . '/process-loop-' . uniqid() . '.jsonl';
-        $this->posts = new InMemoryPostStorage();
+        $this->posts = new InMemoryRepository(Post::class);
         $this->posts->save(new Post(1, 'Process loop post', 'Body under review.', 'draft', '2026-01-01T00:00:00+00:00', null));
     }
 

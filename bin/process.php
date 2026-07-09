@@ -3,8 +3,9 @@
 
 declare(strict_types=1);
 
+use Milpa\Data\RepositoryInterface;
 use Milpa\ExampleBlog\App\Kernel;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ToolRuntime\Contracts\ToolContext;
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -120,8 +121,8 @@ if (!$submit->success) {
 
 $finalState = $submit->data['current_state'];
 if ($finalState === 'published') {
-    /** @var PostStorageInterface $storage */
-    $storage = $kernel->container()->get(PostStorageInterface::class);
+    /** @var RepositoryInterface<Post> $storage */
+    $storage = $kernel->container()->get(RepositoryInterface::class);
     $post = $storage->find($postId);
     $status = $post !== null ? strtoupper($post->status) : 'UNKNOWN';
     $say("✔ GRANT — instance {$instanceId} reached PUBLISHED. Post #{$postId} \"{$postTitle}\" is now {$status}.");

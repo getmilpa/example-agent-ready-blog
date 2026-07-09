@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Milpa\ExampleBlog\Plugins\BlogPlugin;
 
 use Milpa\Attributes\PluginMetadata;
+use Milpa\Data\RepositoryInterface;
 use Milpa\Events\VerificationGrantedEvent;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Event\MilpaEventDispatcherInterface;
 use Milpa\Interfaces\Plugin\PluginInterface;
@@ -22,7 +23,7 @@ use Milpa\Interfaces\Plugin\PluginInterface;
     site: 'https://github.com/getmilpa/example-agent-ready-blog',
     name: 'BlogPlugin',
     type: 'Service',
-    requires: [PostStorageInterface::class],
+    requires: [RepositoryInterface::class],
 )]
 final class BlogPlugin implements PluginInterface
 {
@@ -39,8 +40,8 @@ final class BlogPlugin implements PluginInterface
             if ($subject === null || preg_match('/^post\.publish:(\d+)$/', $subject, $m) !== 1) {
                 return;
             }
-            /** @var PostStorageInterface $storage */
-            $storage = $this->container->get(PostStorageInterface::class);
+            /** @var RepositoryInterface<Post> $storage */
+            $storage = $this->container->get(RepositoryInterface::class);
             $post = $storage->find((int) $m[1]);
             if ($post === null || $post->status === 'published') {
                 return;

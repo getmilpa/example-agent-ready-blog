@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\App;
 
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\Data\RepositoryInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ToolRuntime\Contracts\ToolContext;
 use Milpa\ValueObjects\Verification\VerificationRequest;
 
@@ -69,8 +70,8 @@ final class Demo
 
         if (\in_array($decision, ['approve', 'a'], true)) {
             $this->kernel->verifier()->grant($request, 'human:you');
-            /** @var PostStorageInterface $storage */
-            $storage = $this->kernel->container()->get(PostStorageInterface::class);
+            /** @var RepositoryInterface<Post> $storage */
+            $storage = $this->kernel->container()->get(RepositoryInterface::class);
             $status = strtoupper($storage->find($id)->status);
             $this->say("✔ post #{$id} is now {$status} — the result arrived via event, handled by BlogPlugin");
             $this->say('');

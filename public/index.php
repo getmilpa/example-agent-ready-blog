@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
+use Milpa\Data\RepositoryInterface;
 use Milpa\ExampleBlog\App\Kernel;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\Runtime\Http\Router;
 use Milpa\Http\HttpMethod;
 use Milpa\Http\Routing\MatchStatus;
@@ -20,8 +21,8 @@ require __DIR__ . '/../vendor/autoload.php';
 // writes to. Passing the path explicitly keeps both entry points reading
 // and writing the same storage file regardless of the server's cwd.
 $kernel = Kernel::boot(__DIR__ . '/../var/posts.json');
-/** @var PostStorageInterface $storage */
-$storage = $kernel->container()->get(PostStorageInterface::class);
+/** @var RepositoryInterface<Post> $storage */
+$storage = $kernel->container()->get(RepositoryInterface::class);
 
 $factory = new Psr17Factory();
 $request = (new ServerRequestCreator($factory, $factory, $factory, $factory))->fromGlobals();

@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Orchestrator;
 
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\Data\RepositoryInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
 
 /**
@@ -25,7 +26,10 @@ use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
  */
 final readonly class PublishPostTerminalListener
 {
-    public function __construct(private PostStorageInterface $posts)
+    /**
+     * @param RepositoryInterface<Post> $posts
+     */
+    public function __construct(private RepositoryInterface $posts)
     {
     }
 

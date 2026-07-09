@@ -3,9 +3,10 @@
 
 declare(strict_types=1);
 
+use Milpa\Data\RepositoryInterface;
 use Milpa\EventStore\FileEventStore;
 use Milpa\ExampleBlog\App\Kernel;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishCampaignProcess;
 use Milpa\Orchestrator\ProcessInstance;
 use Milpa\Runtime\Config;
@@ -152,8 +153,8 @@ if (!$submit->success) {
 $freshStore = new FileEventStore($eventsPath);
 $campaignState = (new ProcessInstance($campaignId, PublishCampaignProcess::build()))->currentState($freshStore);
 
-/** @var PostStorageInterface $storage */
-$storage = $kernel->container()->get(PostStorageInterface::class);
+/** @var RepositoryInterface<Post> $storage */
+$storage = $kernel->container()->get(RepositoryInterface::class);
 $post = $storage->find($postId);
 $postStatus = $post !== null ? strtoupper($post->status) : 'UNKNOWN';
 

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Blog;
 
-/** Immutable blog post. `status` is 'draft' or 'published'. */
-final readonly class Post
+use Milpa\Data\EntityInterface;
+
+/** Immutable blog post. `status` is 'draft' or 'published'. A milpa/data {@see EntityInterface}. */
+final readonly class Post implements EntityInterface
 {
     public function __construct(
         public int $id,
@@ -15,6 +17,17 @@ final readonly class Post
         public string $createdAt,
         public ?string $publishedAt,
     ) {
+    }
+
+    /**
+     * A saved post always carries an integer id, so this covariantly narrows the interface's
+     * `int|string|null` to `int` — the same narrowing milpa/data's own backends apply to
+     * {@see \Milpa\Data\RepositoryInterface::nextId()}. PHP return-type covariance permits it, and
+     * phpstan level 6 requires it (an `int|string|null` here would carry types Post never returns).
+     */
+    public function id(): int
+    {
+        return $this->id;
     }
 
     public function withStatus(string $status, ?string $publishedAt = null): self
@@ -36,7 +49,7 @@ final readonly class Post
     }
 
     /** @param array{id: int, title: string, body: string, status: string, created_at: string, published_at: ?string} $row */
-    public static function fromArray(array $row): self
+    public static function fromArray(array $row): static
     {
         return new self($row['id'], $row['title'], $row['body'], $row['status'], $row['created_at'], $row['published_at']);
     }

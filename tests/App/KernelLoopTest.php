@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Tests\App;
 
+use Milpa\Data\RepositoryInterface;
 use Milpa\ExampleBlog\App\Kernel;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
 use Milpa\ToolRuntime\Contracts\ToolContext;
 use Milpa\ValueObjects\Verification\VerificationRequest;
 use PHPUnit\Framework\TestCase;
@@ -73,7 +73,7 @@ final class KernelLoopTest extends TestCase
         $this->kernel->verifier()->grant($request, 'human:test');
         $this->assertSame(['verification.requested', 'verification.granted'], $events);
 
-        $storage = $this->kernel->container()->get(PostStorageInterface::class);
+        $storage = $this->kernel->container()->get(RepositoryInterface::class);
         $this->assertSame('published', $storage->find($id)->status);
     }
 
@@ -89,7 +89,7 @@ final class KernelLoopTest extends TestCase
         $result = $this->kernel->verifier()->reject($request, 'human:test', 'not good enough');
         $this->assertFalse($result->isSatisfied());
 
-        $storage = $this->kernel->container()->get(PostStorageInterface::class);
+        $storage = $this->kernel->container()->get(RepositoryInterface::class);
         $this->assertSame('draft', $storage->find($id)->status);
     }
 }

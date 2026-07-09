@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Plugins\AgentToolsPlugin;
 
+use Milpa\Data\RepositoryInterface;
 use Milpa\ExampleBlog\Blog\Post;
-use Milpa\ExampleBlog\Blog\PostStorageInterface;
 use Milpa\ToolRuntime\Attributes\Param;
 use Milpa\ToolRuntime\Attributes\Tool;
 use Milpa\ToolRuntime\ToolResult;
@@ -16,8 +16,11 @@ use Milpa\ValueObjects\Verification\VerificationRequest;
 /** The agent-callable surface of the blog: three #[Tool] methods. */
 final class BlogTools
 {
+    /**
+     * @param RepositoryInterface<Post> $storage
+     */
     public function __construct(
-        private readonly PostStorageInterface $storage,
+        private readonly RepositoryInterface $storage,
         private readonly HumanVerifier $verifier,
     ) {
     }
@@ -29,7 +32,10 @@ final class BlogTools
         #[Param('Post body', required: true)]
         string $body,
     ): ToolResult {
-        $post = new Post($this->storage->nextId(), $title, $body, 'draft', date('c'), null);
+        // RepositoryInterface::nextId() is `int|string` (a backend could mint non-int ids); Post's id
+        // is strictly int, so narrow it here. save() now returns the id used, but the post already
+        // carries its own, so the return is not needed.
+        $post = new Post((int) $this->storage->nextId(), $title, $body, 'draft', date('c'), null);
         $this->storage->save($post);
 
         return ToolResult::success(['id' => $post->id, 'status' => 'draft']);

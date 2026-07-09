@@ -149,6 +149,79 @@ final class HumanGate
     }
 
     /**
+     * Read-only reconstruction of "what's the current pending decision on `$instance`, if any" —
+     * WITHOUT appending a new `GateOpened` event. Finds the latest `GateOpened` event on
+     * `$instance`'s own log and checks whether it is still UNRESOLVED (no later event, by `seq`,
+     * whose `type` is one of that `GateOpened`'s own `options`), then rebuilds the {@see
+     * PendingDecision} around it exactly like {@see self::openFor()} would have, minus the write.
+     *
+     * This is the read path F3's report flagged as missing: a "list pending approvals" caller
+     * must not call {@see self::openFor()} just to inspect an already-open gate (that would
+     * append a redundant `GateOpened`) — it should call this instead. {@see
+     * \Milpa\ExampleBlog\Orchestrator\ProcessRunner} also uses it to decide whether a gate still
+     * needs opening before it calls {@see self::openFor()}.
+     *
+     * Returns `null` when: no `GateOpened` event exists for `$instance` at all; the latest one has
+     * already been resolved; `$instance`'s current state no longer carries a gate matching the
+     * latest `GateOpened`'s `gate_id` (state moved on without a matching resolution event — should
+     * not happen in practice, but this method is read-only and simply reports "nothing pending"
+     * rather than throwing); its context carries no integer `post_id`; or the post it would need
+     * to render can no longer be found.
+     */
+    public function pendingFor(
+        EventStore $store,
+        ProcessInstance $instance,
+        PostStorageInterface $postLookup,
+    ): ?PendingDecision {
+        $events = $store->replay($instance->instanceId);
+        $opens = array_values(array_filter(
+            $events,
+            static fn (ProcessEvent $event): bool => $event->type === 'GateOpened',
+        ));
+        if ($opens === []) {
+            return null;
+        }
+
+        $latest = $opens[array_key_last($opens)];
+        /** @var list<string> $options */
+        $options = $latest->payload['options'] ?? [];
+
+        foreach ($events as $event) {
+            if ($event->seq > $latest->seq && in_array($event->type, $options, true)) {
+                // A later event already resolved this GateOpened — nothing pending.
+                return null;
+            }
+        }
+
+        $gateId = (string) ($latest->payload['gate_id'] ?? '');
+        $state = $instance->currentState($store);
+        $gate = $instance->definition->gateFor($state);
+        if ($gate === null || $gate->getCode() !== $gateId) {
+            return null;
+        }
+
+        $postId = $instance->context($store)['post_id'] ?? null;
+        if (!is_int($postId)) {
+            return null;
+        }
+
+        $post = $postLookup->find($postId);
+        if ($post === null) {
+            return null;
+        }
+
+        $transitions = $instance->definition->transitionsFrom($state);
+
+        return new PendingDecision(
+            instanceId: $instance->instanceId,
+            gateId: $gateId,
+            assignee: $gate->getApproverRole(),
+            artifact: new DecisionArtifact($post->title, $post->body, $transitions),
+            options: array_column($transitions, 'name'),
+        );
+    }
+
+    /**
      * The most recent `GateOpened` event for `$gateId` on `$instanceId`, or `null`
      * if that gate was never opened. "Most recent" matters because `PublishPostProcess`'s
      * revise-and-resubmit loop can open the same gate more than once across an

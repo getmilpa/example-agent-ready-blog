@@ -26,11 +26,20 @@ final class KernelLoopTest extends TestCase
         @unlink($this->file);
     }
 
-    public function testBootRegistersTheFiveTools(): void
+    public function testBootRegistersTheEightTools(): void
     {
         $names = array_map(static fn (array $t) => $t['name'], $this->kernel->registry()->getToolSummaries());
         sort($names);
-        $this->assertSame(['create_post', 'list_posts', 'publish_post', 'request_verification', 'resolve_verification'], $names);
+        $this->assertSame([
+            'create_post',
+            'list_posts',
+            'process_instantiate',
+            'process_list_pending_approvals',
+            'process_submit_decision',
+            'publish_post',
+            'request_verification',
+            'resolve_verification',
+        ], $names);
     }
 
     public function testFullLoopGrantPath(): void

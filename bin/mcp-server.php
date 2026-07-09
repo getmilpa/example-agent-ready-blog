@@ -11,10 +11,12 @@ require __DIR__ . '/../vendor/autoload.php';
 
 // Point your agent at this process over stdio — same tools, same registry, same
 // verification choreography as bin/blog.php, just a different transport.
-// An optional first argument overrides the storage path (Kernel::boot threads it through
-// milpa/runtime's config bag); it defaults to var/posts.json when omitted.
+// Two optional positional arguments override the storage path and the orchestrator's event-log
+// path (Kernel::boot threads both through milpa/runtime's config bag); they default to
+// var/posts.json and var/events.jsonl respectively when omitted.
 $storageFile = $argv[1] ?? null;
-$kernel = Kernel::boot($storageFile);
+$eventsFile = $argv[2] ?? null;
+$kernel = Kernel::boot($storageFile, $eventsFile);
 $service = new JsonRpcService($kernel->registry());
 
 // STDOUT is protocol-only: one JSON-RPC message per line. Human-readable output goes to

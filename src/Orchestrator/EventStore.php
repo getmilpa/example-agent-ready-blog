@@ -87,6 +87,26 @@ final class EventStore
     }
 
     /**
+     * Every distinct instance id present in the store, in the order each first appears (ascending
+     * `seq` of its first event). Exists for read-side scans across ALL instances (e.g. listing
+     * every pending approval) that cannot start from a single, already-known instance id the way
+     * {@see self::replay()} does.
+     *
+     * @return list<string>
+     */
+    public function allInstanceIds(): array
+    {
+        $ids = [];
+        foreach ($this->readAll() as $event) {
+            if (!in_array($event->instanceId, $ids, true)) {
+                $ids[] = $event->instanceId;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
      * @return list<ProcessEvent>
      */
     private function readAll(): array

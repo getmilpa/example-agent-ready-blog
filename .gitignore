@@ -3,4 +3,5 @@
 /.phpunit.cache/
 /.php-cs-fixer.cache
 /var/posts.json
+/var/events.jsonl
 composer-dev.lock

@@ -37,7 +37,7 @@ final class Kernel
     ) {
     }
 
-    public static function boot(?string $storageFile = null): self
+    public static function boot(?string $storageFile = null, ?string $eventsFile = null): self
     {
         $root = \dirname(__DIR__, 2);
         // StoragePlugin is booted by the runtime via `new StoragePlugin($container)` and the
@@ -46,6 +46,10 @@ final class Kernel
         // Milpa\Runtime\Config the plugin reads in boot()). Still overridable per-call for tests;
         // defaults to var/posts.json under the host root.
         $storageFile ??= $root . '/var/posts.json';
+        // Same seam, same reason, for the orchestrator's append-only event log (AgentToolsPlugin
+        // reads `orchestrator.events_path` when it wires the 3 process tools) — defaults to
+        // var/events.jsonl under the host root, per the plan's zero-DB event store.
+        $eventsFile ??= $root . '/var/events.jsonl';
 
         $container = new DIContainer();
         $dispatcher = new EventDispatcher(new NullLogger());
@@ -61,7 +65,10 @@ final class Kernel
             'container' => $container,
             'dispatcher' => $dispatcher,
             'toolRegistry' => $registry,
-            'config' => ['storage' => ['path' => $storageFile]],
+            'config' => [
+                'storage' => ['path' => $storageFile],
+                'orchestrator' => ['events_path' => $eventsFile],
+            ],
             'plugins' => [
                 StoragePlugin::class,
                 BlogPlugin::class,

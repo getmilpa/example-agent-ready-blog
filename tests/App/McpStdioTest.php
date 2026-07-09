@@ -89,7 +89,16 @@ final class McpStdioTest extends TestCase
         $toolsList = json_decode($toolsListLine, true);
         $names = array_map(static fn (array $t): string => $t['name'], $toolsList['result']['tools']);
         sort($names);
-        $this->assertSame(['create_post', 'list_posts', 'publish_post', 'request_verification', 'resolve_verification'], $names);
+        $this->assertSame([
+            'create_post',
+            'list_posts',
+            'process_instantiate',
+            'process_list_pending_approvals',
+            'process_submit_decision',
+            'publish_post',
+            'request_verification',
+            'resolve_verification',
+        ], $names);
 
         $id = $this->callTool('create_post', ['title' => 'Hello MCP', 'body' => 'over stdio'], 3)['data']['id'];
 

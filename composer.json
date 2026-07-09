@@ -3,16 +3,10 @@
   "description": "Runnable example of the Milpa loop — plugin → capability → tool → verification → event → result — as a tiny agent-ready blog.",
   "type": "project",
   "license": "Apache-2.0",
-  "repositories": [
-    {
-      "type": "path",
-      "url": "../teamx/packages/milpa-data"
-    }
-  ],
   "require": {
     "php": ">=8.3",
     "milpa/core": "^0.5",
-    "milpa/data": "*",
+    "milpa/data": "^0.1",
     "milpa/event-store": "^0.1",
     "milpa/http": "^0.1",
     "milpa/live": "^0.1",

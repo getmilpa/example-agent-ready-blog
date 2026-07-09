@@ -147,6 +147,64 @@ final class McpProcessToolsTest extends TestCase
         $this->assertCount(1, $pendingAgain['data']['pending']);
     }
 
+    public function testInstantiatingACampaignSurfacesTheNestedChildGateOverStdio(): void
+    {
+        $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
+
+        $id = $this->callTool('create_post', ['title' => 'Campaign over stdio', 'body' => 'the subprocess loop'], 2)['data']['id'];
+
+        // Only the PARENT campaign is ever named to process_instantiate — the same 3 tools, over
+        // the wire, run publish_post as a subprocess with zero campaign-specific tooling.
+        $instantiate = $this->callTool('process_instantiate', [
+            'definition' => 'publish_campaign',
+            'inputs' => ['post_id' => $id],
+        ], 3);
+        $this->assertTrue($instantiate['success']);
+        $this->assertSame('review', $instantiate['data']['current_state']);
+        $campaignId = $instantiate['data']['instance_id'];
+
+        // Nested-gate discovery over stdio: the pending-approvals list surfaces the CHILD
+        // publish_post's review_gate, whose instance is NOT the campaign.
+        $pending = $this->callTool('process_list_pending_approvals', [], 4);
+        $this->assertTrue($pending['success']);
+        $this->assertCount(1, $pending['data']['pending']);
+        $this->assertNotSame($campaignId, $pending['data']['pending'][0]['instance_id']);
+        $options = $pending['data']['pending'][0]['options'];
+        sort($options);
+        $this->assertSame(['grant', 'reject'], $options);
+    }
+
+    public function testGrantingTheNestedChildGateDrivesTheCampaignToDoneOverStdio(): void
+    {
+        $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
+
+        $id = $this->callTool('create_post', ['title' => 'Campaign grant over stdio', 'body' => 'body'], 2)['data']['id'];
+        $instantiate = $this->callTool('process_instantiate', [
+            'definition' => 'publish_campaign',
+            'inputs' => ['post_id' => $id],
+        ], 3);
+        $campaignId = $instantiate['data']['instance_id'];
+
+        $child = $this->callTool('process_list_pending_approvals', [], 4)['data']['pending'][0];
+        $this->assertNotSame($campaignId, $child['instance_id']);
+
+        // Resolving the LEAF child gate publishes the post AND routes subprocess_done up so the
+        // campaign reaches its own terminal `done` — all in this one submit over the wire.
+        $submit = $this->callTool('process_submit_decision', [
+            'instance_id' => $child['instance_id'],
+            'gate_id' => $child['gate_id'],
+            'decision' => 'grant',
+            'principal' => 'human:mcp-campaign-test',
+        ], 5);
+        $this->assertTrue($submit['success']);
+        $this->assertSame('published', $submit['data']['current_state']);
+
+        // Nothing is pending anywhere anymore: the child AND the campaign both reached terminal —
+        // the stdio-observable proof the whole nested chain finished.
+        $pendingAfter = $this->callTool('process_list_pending_approvals', [], 6);
+        $this->assertCount(0, $pendingAfter['data']['pending']);
+    }
+
     /**
      * @param array<string, mixed> $args
      *

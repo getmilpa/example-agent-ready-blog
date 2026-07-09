@@ -7,6 +7,7 @@ namespace Milpa\ExampleBlog\Plugins\AgentToolsPlugin;
 use Milpa\Attributes\PluginMetadata;
 use Milpa\EventStore\FileEventStore;
 use Milpa\ExampleBlog\Blog\PostStorageInterface;
+use Milpa\ExampleBlog\Orchestrator\Definitions\PublishCampaignProcess;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
 use Milpa\ExampleBlog\Orchestrator\PostDecisionArtifactFactory;
 use Milpa\ExampleBlog\Orchestrator\PublishPostTerminalListener;
@@ -61,10 +62,14 @@ final class AgentToolsPlugin implements PluginInterface, ToolProviderInterface
         $eventsPath = $config->get('orchestrator.events_path');
         $store = new FileEventStore($eventsPath);
 
-        // The name->definition directory the package's process_instantiate tool resolves through;
-        // this example registers exactly one process (publish_post).
+        // The name->definition directory the package's process_instantiate tool resolves through,
+        // AND the seam ProcessRunner resolves a subprocess state's `definitionRef` through at
+        // runtime. This example registers BOTH the parent `publish_campaign` and the CHILD
+        // `publish_post` it composes as a subprocess — a campaign instantiates a publish_post
+        // child, waits for its review_gate to be resolved, then advances itself to `done`.
         $definitions = new ProcessDefinitionRegistry();
         $definitions->register(PublishPostProcess::NAME, PublishPostProcess::build());
+        $definitions->register(PublishCampaignProcess::NAME, PublishCampaignProcess::build());
 
         /** @var MilpaEventDispatcherInterface $dispatcher */
         $dispatcher = $this->container->get(MilpaEventDispatcherInterface::class);
@@ -78,9 +83,11 @@ final class AgentToolsPlugin implements PluginInterface, ToolProviderInterface
 
         // The package HumanGate delegates "what does this gate's decision surface look like?" to
         // the example's DecisionSurfaceFactory; the package ProcessRunner drives auto-advance and
-        // fires the terminal seam through the app dispatcher.
+        // fires the terminal seam through the app dispatcher. The runner also receives the
+        // definition registry so it can resolve `publish_campaign`'s subprocess state onto the
+        // `publish_post` child at runtime (rebanada 2 — recursive composition).
         $gate = new HumanGate(new PostDecisionArtifactFactory($storage));
-        $runner = new ProcessRunner($dispatcher);
+        $runner = new ProcessRunner($dispatcher, $definitions);
 
         $scanner->scan(new ProcessInstantiateTool($store, $gate, $runner, $definitions));
         $scanner->scan(new ProcessListPendingApprovalsTool($store, $gate, $definitions));
@@ -92,7 +99,7 @@ final class AgentToolsPlugin implements PluginInterface, ToolProviderInterface
     {
         return [
             'Blog tools: create_post, list_posts, publish_post (human-verified).',
-            'Process tools: process_instantiate, process_list_pending_approvals, process_submit_decision — the publish_post process loop (draft -> review_gate -> published), event-sourced.',
+            'Process tools: process_instantiate, process_list_pending_approvals, process_submit_decision — the publish_post loop (draft -> review_gate -> published) AND the publish_campaign parent that runs publish_post as a subprocess (draft -> review[subprocess] -> announced -> done), both event-sourced and driven by the same 3 tools.',
         ];
     }
 

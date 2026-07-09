@@ -4,25 +4,37 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Tests\Orchestrator;
 
+use Milpa\Eventing\EventDispatcher;
+use Milpa\EventStore\Event;
+use Milpa\EventStore\FileEventStore;
 use Milpa\ExampleBlog\Blog\Post;
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
-use Milpa\ExampleBlog\Orchestrator\EventStore;
-use Milpa\ExampleBlog\Orchestrator\HumanGate;
-use Milpa\ExampleBlog\Orchestrator\ProcessEvent;
-use Milpa\ExampleBlog\Orchestrator\ProcessInstance;
-use Milpa\ExampleBlog\Orchestrator\Tools\ProcessInstantiateTool;
-use Milpa\ExampleBlog\Orchestrator\Tools\ProcessListPendingApprovalsTool;
-use Milpa\ExampleBlog\Orchestrator\Tools\ProcessSubmitDecisionTool;
+use Milpa\ExampleBlog\Orchestrator\PostDecisionArtifactFactory;
+use Milpa\ExampleBlog\Orchestrator\PublishPostTerminalListener;
 use Milpa\ExampleBlog\Tests\Orchestrator\Fixtures\InMemoryPostStorage;
+use Milpa\Orchestrator\HumanGate;
+use Milpa\Orchestrator\ProcessDefinitionRegistry;
+use Milpa\Orchestrator\ProcessInstance;
+use Milpa\Orchestrator\ProcessRunner;
+use Milpa\Orchestrator\Tools\ProcessInstantiateTool;
+use Milpa\Orchestrator\Tools\ProcessListPendingApprovalsTool;
+use Milpa\Orchestrator\Tools\ProcessSubmitDecisionTool;
 use Milpa\ToolRuntime\Contracts\ToolContext;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 
 /**
- * Drives the whole `publish_post` process loop through the 3 MCP tools — the exact shape
- * `bin/process.php` and a real MCP client both use — end to end: instantiate (auto-advances to the
- * gate), list the pending decision, submit a decision (auto-advances again), and prove it is
- * genuinely event-sourced (a FRESH {@see EventStore} over the same file reconstructs the same
- * state, with no in-memory shortcut).
+ * The dogfood: drives the whole `publish_post` process loop through the 3 `milpa/orchestrator`
+ * tools — the exact shape `bin/process.php` and a real MCP client both use — end to end, proving
+ * the example's DOMAIN wiring (the {@see PublishPostProcess} definition, the {@see
+ * PostDecisionArtifactFactory} decision surface, the {@see PublishPostTerminalListener} terminal
+ * effect) drives the package engine correctly. Instantiate auto-advances to the gate, list shows
+ * the pending decision, submit auto-advances again, and it is genuinely event-sourced (a FRESH
+ * {@see FileEventStore} over the same file reconstructs the same state, no in-memory shortcut).
+ *
+ * Every generic-engine assertion (the reducer, the store, the human gate's self-approval, ...) now
+ * lives in `packages/milpa-orchestrator`'s + `packages/milpa-event-store`'s own suites — this test
+ * only asserts what is domain: that publish_post, wired onto those packages, still runs the loop.
  */
 final class ProcessLoopTest extends TestCase
 {
@@ -43,20 +55,34 @@ final class ProcessLoopTest extends TestCase
     }
 
     /**
-     * @return array{0: ProcessInstantiateTool, 1: ProcessListPendingApprovalsTool, 2: ProcessSubmitDecisionTool, 3: EventStore}
+     * Wires the example's domain (publish_post definition, post decision surface, terminal
+     * listener) onto the package engine exactly as {@see
+     * \Milpa\ExampleBlog\Plugins\AgentToolsPlugin\AgentToolsPlugin} does at boot.
+     *
+     * @return array{0: ProcessInstantiateTool, 1: ProcessListPendingApprovalsTool, 2: ProcessSubmitDecisionTool, 3: FileEventStore}
      */
     private function tools(): array
     {
-        $store = new EventStore($this->path);
-        $gate = new HumanGate();
+        $store = new FileEventStore($this->path);
 
-        $instantiate = new ProcessInstantiateTool($store, $gate, $this->posts);
+        $registry = new ProcessDefinitionRegistry();
+        $registry->register(PublishPostProcess::NAME, PublishPostProcess::build());
+
+        $dispatcher = new EventDispatcher(new NullLogger());
+        $dispatcher->subscribe(
+            'process.terminal',
+            [new PublishPostTerminalListener($this->posts), 'onProcessTerminal'],
+        );
+
+        $gate = new HumanGate(new PostDecisionArtifactFactory($this->posts));
+        $runner = new ProcessRunner($dispatcher);
+
+        $instantiate = new ProcessInstantiateTool($store, $gate, $runner, $registry);
         $instantiate->setCurrentContext(ToolContext::cli());
 
-        $list = new ProcessListPendingApprovalsTool($store, $gate, $this->posts);
-        $list->setCurrentContext(ToolContext::cli());
+        $list = new ProcessListPendingApprovalsTool($store, $gate, $registry);
 
-        $submit = new ProcessSubmitDecisionTool($store, $gate, $this->posts);
+        $submit = new ProcessSubmitDecisionTool($store, $gate, $runner, $registry);
 
         return [$instantiate, $list, $submit, $store];
     }
@@ -65,7 +91,7 @@ final class ProcessLoopTest extends TestCase
     {
         [$instantiate] = $this->tools();
 
-        $result = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR));
+        $result = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1]);
 
         $this->assertTrue($result->success);
         $this->assertNotEmpty($result->data['instance_id']);
@@ -76,7 +102,7 @@ final class ProcessLoopTest extends TestCase
     {
         [$instantiate] = $this->tools();
 
-        $result = $instantiate->instantiate('not_a_real_process', '{}');
+        $result = $instantiate->instantiate('not_a_real_process', []);
 
         $this->assertFalse($result->success);
         $this->assertSame('UNKNOWN_DEFINITION', $result->error);
@@ -85,7 +111,7 @@ final class ProcessLoopTest extends TestCase
     public function testListPendingApprovalsShowsTheOpenGateWithItsOptions(): void
     {
         [$instantiate, $list] = $this->tools();
-        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR))->data['instance_id'];
+        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
 
         $result = $list->list();
 
@@ -96,20 +122,22 @@ final class ProcessLoopTest extends TestCase
         $options = $row['options'];
         sort($options);
         $this->assertSame(['grant', 'reject'], $options);
-        $this->assertStringContainsString('Process loop post', $row['artifact']);
+        // The package tool returns the mounted {component, data} snapshot (not pre-rendered markup);
+        // the decision surface the example built carries the post's title in its data.
+        $this->assertSame('Process loop post', $row['artifact']['data']['title']);
     }
 
     public function testListingPendingApprovalsTwiceDoesNotReopenTheGate(): void
     {
         [$instantiate, $list, , $store] = $this->tools();
-        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR))->data['instance_id'];
+        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
 
         $list->list();
         $list->list();
 
         $opened = array_values(array_filter(
             $store->replay($instanceId),
-            static fn (ProcessEvent $event): bool => $event->type === 'GateOpened',
+            static fn (Event $event): bool => $event->type === 'GateOpened',
         ));
         $this->assertCount(1, $opened, 'listing pending approvals must not append a redundant GateOpened event');
     }
@@ -117,7 +145,7 @@ final class ProcessLoopTest extends TestCase
     public function testSubmitDecisionGrantAdvancesToPublishedAndReplaysCleanFromAFreshStore(): void
     {
         [$instantiate, $list, $submit] = $this->tools();
-        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR))->data['instance_id'];
+        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
         $gateId = $list->list()->data['pending'][0]['gate_id'];
 
         $result = $submit->submit($instanceId, $gateId, 'grant', 'human:editor');
@@ -125,17 +153,17 @@ final class ProcessLoopTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertSame('published', $result->data['current_state']);
 
-        // Event-sourced end-to-end: a FRESH EventStore + a FRESH ProcessInstance handle over the
-        // SAME file reconstructs the exact same state — nothing here is cached in memory.
-        $freshStore = new EventStore($this->path);
+        // Event-sourced end-to-end: a FRESH FileEventStore + a FRESH ProcessInstance handle over
+        // the SAME file reconstructs the exact same state — nothing here is cached in memory.
+        $freshStore = new FileEventStore($this->path);
         $attached = new ProcessInstance($instanceId, PublishPostProcess::build());
         $this->assertSame('published', $attached->currentState($freshStore));
     }
 
-    public function testSubmitDecisionGrantAlsoPublishesTheUnderlyingPost(): void
+    public function testSubmitDecisionGrantAlsoPublishesTheUnderlyingPostViaTheTerminalListener(): void
     {
         [$instantiate, $list, $submit] = $this->tools();
-        $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR));
+        $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1]);
         $gateId = $list->list()->data['pending'][0]['gate_id'];
         $instanceId = $list->list()->data['pending'][0]['instance_id'];
 
@@ -143,6 +171,8 @@ final class ProcessLoopTest extends TestCase
         $this->assertNotNull($beforeGrant);
         $this->assertSame('draft', $beforeGrant->status);
 
+        // The package tool touches no domain entity — it is the `process.terminal` event
+        // PublishPostTerminalListener subscribes to (finding #4) that publishes the post.
         $submit->submit($instanceId, $gateId, 'grant', 'human:editor');
 
         $afterGrant = $this->posts->find(1);
@@ -153,7 +183,7 @@ final class ProcessLoopTest extends TestCase
     public function testSubmitDecisionRejectReturnsToAFreshReviewGate(): void
     {
         [$instantiate, $list, $submit] = $this->tools();
-        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR))->data['instance_id'];
+        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
         $gateId = $list->list()->data['pending'][0]['gate_id'];
 
         $result = $submit->submit($instanceId, $gateId, 'reject', 'human:editor');
@@ -172,7 +202,7 @@ final class ProcessLoopTest extends TestCase
     {
         [$instantiate, $list, $submit] = $this->tools();
         // ProcessInstantiateTool records ToolContext::cli()'s principal ('cli') as the requester.
-        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR))->data['instance_id'];
+        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
         $gateId = $list->list()->data['pending'][0]['gate_id'];
 
         $result = $submit->submit($instanceId, $gateId, 'grant', 'cli');
@@ -184,7 +214,7 @@ final class ProcessLoopTest extends TestCase
     public function testSubmitDecisionWithAnUnknownGateIsAClearError(): void
     {
         [$instantiate, , $submit] = $this->tools();
-        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, json_encode(['post_id' => 1], \JSON_THROW_ON_ERROR))->data['instance_id'];
+        $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
 
         $result = $submit->submit($instanceId, 'never_opened_gate', 'grant', 'human:editor');
 

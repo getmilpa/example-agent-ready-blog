@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Orchestrator\Definitions;
 
-use Milpa\ExampleBlog\Orchestrator\ProcessDefinition;
+use Milpa\Orchestrator\ProcessDefinition;
 use Milpa\Workflow\Entities\GateDefinition;
 use Milpa\Workflow\Entities\StateDefinition;
 use Milpa\Workflow\Entities\TransitionDefinition;
@@ -33,7 +33,7 @@ final class PublishPostProcess
     public const string STATE_REVIEW_GATE = 'review_gate';
     public const string STATE_PUBLISHED = 'published';
 
-    /** Transition names are the literal event `type`s that advance them (see {@see \Milpa\ExampleBlog\Orchestrator\Reducer}). */
+    /** Transition names are the literal event `type`s that advance them (see {@see \Milpa\Orchestrator\Reducer}). */
     public const string TRANSITION_SUBMIT = 'submit';
 
     public const string TRANSITION_GRANT = 'grant';

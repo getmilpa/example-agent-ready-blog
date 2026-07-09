@@ -6,16 +6,18 @@
   "require": {
     "php": ">=8.3",
     "milpa/core": "^0.5",
+    "milpa/event-store": "*",
     "milpa/http": "^0.1",
+    "milpa/live": "^0.1",
+    "milpa/live-web": "^0.1",
     "milpa/mcp-server": "^0.3",
+    "milpa/orchestrator": "*",
     "milpa/runtime": "^0.1",
-    "milpa/tool-runtime": "^0.5",
+    "milpa/tool-runtime": "dev-main as 0.5.99",
+    "milpa/workflow": "*",
     "psr/log": "^3",
     "nyholm/psr7": "^1.8",
-    "nyholm/psr7-server": "^1.1",
-    "milpa/workflow": "^0.1",
-    "milpa/live": "^0.1",
-    "milpa/live-web": "^0.1"
+    "nyholm/psr7-server": "^1.1"
   },
   "require-dev": {
     "phpunit/phpunit": "^11.5",
@@ -35,6 +37,36 @@
   "config": {
     "sort-packages": true
   },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-orchestrator",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-event-store",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-workflow",
+      "options": {
+        "symlink": true
+      }
+    },
+    {
+      "type": "path",
+      "url": "../teamx/packages/milpa-tool-runtime",
+      "options": {
+        "symlink": true
+      }
+    }
+  ],
   "minimum-stability": "dev",
   "prefer-stable": true
 }

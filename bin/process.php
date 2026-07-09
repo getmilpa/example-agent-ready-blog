@@ -51,7 +51,9 @@ $say("→ create_post(\"{$postTitle}\") … draft post #{$postId} created");
 
 $start = $registry->call('process_instantiate', [
     'definition' => 'publish_post',
-    'inputs' => json_encode(['post_id' => $postId], \JSON_THROW_ON_ERROR),
+    // milpa/tool-runtime 0.6's #[Param(type: 'object')] takes `inputs` as a real object — a plain
+    // associative array on the wire, no JSON-string workaround (the greenhouse's old deviation).
+    'inputs' => ['post_id' => $postId],
 ], $ctx);
 if (!$start->success) {
     $say("✘ process_instantiate failed: {$start->data}");
@@ -82,9 +84,19 @@ if ($pending === null) {
 }
 
 $say('');
-$say('The decision artifact, rendered for this terminal (RenderTarget::TUI):');
+$say('The decision artifact — the package tool returns its mounted {component, data}; this demo');
+$say('renders that structured snapshot for the terminal (rendering is the consumer\'s half):');
 $say('---');
-$say($pending['artifact']);
+$artifactData = $pending['artifact']['data'];
+$say((string) $artifactData['title']);
+$say('');
+$say((string) $artifactData['excerpt']);
+$say('');
+/** @var array<string, string> $labels */
+$labels = $artifactData['labels'];
+foreach ($labels as $label => $transition) {
+    $say(sprintf('[%s] %s (%s)', strtoupper($label), $label, $transition));
+}
 $say('---');
 $say('');
 

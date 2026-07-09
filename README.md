@@ -267,9 +267,12 @@ php bin/process.php --reject         # instantiate → gate → reject → back 
 The load-bearing property: **state is never stored, only derived.** Every step is an append-only
 event in `var/events.jsonl`; the current state is a *projection* of that log. A brand-new store over
 the same file reconstructs `published` independently — which is what makes the whole history
-auditable and replayable (time-travel for free). It composes `milpa/workflow` (the state machine +
-the self-approval rule), `milpa/live` (the decision artifact, rendered to web or terminal), and
-`milpa/events`. This is a greenhouse: the contracts proven here become `milpa/orchestrator`.
+auditable and replayable (time-travel for free). The generic engine is `milpa/orchestrator` (the
+process definition, reducer, auto-advancing runner, and human gate) over `milpa/event-store` (the
+append-only log) — this example only `require`s them and supplies the **domain**: the `publish_post`
+definition, a decision surface that renders a post, and a `process.terminal` listener that publishes
+it. This layer *was* the greenhouse those two packages were extracted from; re-pointing it onto them
+— and watching this same loop stay green — is the dogfood that proves the extraction.
 
 ## What implements what
 
@@ -285,7 +288,7 @@ the *domain* on top of them:
 | Boot | A thin bootstrap + a config-driven plugin list | `milpa/runtime` (`Kernel::boot`) |
 | Domain | The blog plugins (Storage / Blog / AgentTools) + the 5 blog/verification tools | `milpa/core` contracts + `milpa/tool-runtime` |
 | Transport | `bin/mcp-server.php` wraps the same registry over stdio | `milpa/mcp-server` |
-| Process | The orchestrator layer (`src/Orchestrator/`) — a post *as an event-sourced process* | `milpa/workflow` + `milpa/live` + `milpa/events` |
+| Process | The `publish_post` domain (`src/Orchestrator/`) — definition, decision surface, terminal listener | `milpa/orchestrator` + `milpa/event-store` (engine) over `milpa/workflow` + `milpa/live` + `milpa/events` |
 
 The reduction is the point: the inline kernel retired with its tests green (they moved upstream into
 the packages that now own that behavior). Read the ~40-line bootstrap and the domain — the framework

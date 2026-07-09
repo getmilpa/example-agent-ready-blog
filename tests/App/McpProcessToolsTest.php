@@ -98,7 +98,7 @@ final class McpProcessToolsTest extends TestCase
 
         $instantiate = $this->callTool('process_instantiate', [
             'definition' => 'publish_post',
-            'inputs' => json_encode(['post_id' => $id], \JSON_THROW_ON_ERROR),
+            'inputs' => ['post_id' => $id],
         ], 3);
         $this->assertTrue($instantiate['success']);
         $this->assertSame('review_gate', $instantiate['data']['current_state']);
@@ -129,7 +129,7 @@ final class McpProcessToolsTest extends TestCase
         $id = $this->callTool('create_post', ['title' => 'Reject over stdio', 'body' => 'body'], 2)['data']['id'];
         $instantiate = $this->callTool('process_instantiate', [
             'definition' => 'publish_post',
-            'inputs' => json_encode(['post_id' => $id], \JSON_THROW_ON_ERROR),
+            'inputs' => ['post_id' => $id],
         ], 3);
         $instanceId = $instantiate['data']['instance_id'];
         $gateId = $this->callTool('process_list_pending_approvals', [], 4)['data']['pending'][0]['gate_id'];

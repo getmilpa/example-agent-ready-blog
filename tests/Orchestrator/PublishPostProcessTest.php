@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace Milpa\ExampleBlog\Tests\Orchestrator;
 
 use Milpa\ExampleBlog\Orchestrator\Definitions\PublishPostProcess;
-use Milpa\ExampleBlog\Orchestrator\ProcessDefinition;
-use Milpa\Workflow\Entities\StateDefinition;
-use Milpa\Workflow\Entities\TransitionDefinition;
 use PHPUnit\Framework\TestCase;
 
+/**
+ * The DOMAIN definition test: proves {@see PublishPostProcess::build()} composes the concrete
+ * `draft -> review_gate[human] -> published` machine out of `milpa/orchestrator`'s generic {@see
+ * \Milpa\Orchestrator\ProcessDefinition} + `milpa/workflow`'s state/transition/gate entities. The
+ * engine's OWN generic behaviour (acyclic-modulo-gates validation, the reducer, ...) is covered by
+ * `packages/milpa-orchestrator`'s suite — this only asserts publish_post's shape.
+ */
 final class PublishPostProcessTest extends TestCase
 {
     public function testTheDefinitionHasTheThreeExpectedStates(): void
@@ -70,25 +74,12 @@ final class PublishPostProcessTest extends TestCase
         $this->assertNull($definition->gateFor('published'), 'published has no outgoing transitions at all');
     }
 
-    public function testADefinitionBuiltWithADeliberateCycleThrows(): void
-    {
-        $a = (new StateDefinition())->setDomain('cyclic')->setCode('a')->setLabel('A')->setIsInitial(true);
-        $b = (new StateDefinition())->setDomain('cyclic')->setCode('b')->setLabel('B');
-
-        $aToB = (new TransitionDefinition())->setDomain('cyclic')->setCode('to_b')->setFromState($a)->setToState($b);
-        $bToA = (new TransitionDefinition())->setDomain('cyclic')->setCode('to_a')->setFromState($b)->setToState($a);
-
-        $this->expectException(\RuntimeException::class);
-
-        new ProcessDefinition([$a, $b], [$aToB, $bToA]);
-    }
-
     public function testTheRejectToDraftToSubmitLoopIsALegitimateCycleThatDoesNotThrow(): void
     {
         // review_gate --reject--> draft --submit--> review_gate is a real cycle in the raw
         // state graph, but it is broken by the human gate on review_gate (someone must decide
         // grant/reject each time round) — PublishPostProcess::build() below must NOT throw
-        // despite it, unlike the fully-automatic cycle in the test above.
+        // despite it (the acyclic-modulo-gates rule is proven generically upstream).
         $definition = PublishPostProcess::build();
 
         $reject = array_values(array_filter(

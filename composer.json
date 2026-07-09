@@ -11,7 +11,7 @@
     "milpa/live": "^0.1",
     "milpa/live-web": "^0.1",
     "milpa/mcp-server": "^0.3",
-    "milpa/orchestrator": "*",
+    "milpa/orchestrator": "^0.2",
     "milpa/runtime": "^0.1",
     "milpa/tool-runtime": "^0.5.1",
     "milpa/workflow": "^0.1.2",
@@ -37,15 +37,6 @@
   "config": {
     "sort-packages": true
   },
-  "repositories": [
-    {
-      "type": "path",
-      "url": "../teamx/packages/milpa-orchestrator",
-      "options": {
-        "symlink": true
-      }
-    }
-  ],
   "minimum-stability": "dev",
   "prefer-stable": true
 }

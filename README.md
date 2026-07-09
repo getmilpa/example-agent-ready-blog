@@ -242,23 +242,54 @@ Auth\TokenValidatorInterface (unused here) to authenticate the principal first.
 
 The framework hands you the gate; **guarding it is explicitly your half of the contract.**
 
+## The process-loop — a post *as an event-sourced process*
+
+The tool-loop above (`create_post` → confirm gate → verification → event) is one shape of control.
+The `src/Orchestrator/` layer shows the next one: the same publish becomes a **process** that a post
+walks through — `draft → review_gate[human] → published` — driven by three MCP tools instead of one
+verification call:
+
+- `process_instantiate("publish_post", {post_id})` — starts the process; it auto-advances to the
+  human gate and stops.
+- `process_list_pending_approvals(assignee)` — the approver's inbox; each pending decision carries a
+  **decision artifact** (a `milpa/live` component whose options map 1:1 to the gate's transitions —
+  what you can click is exactly what the process can do).
+- `process_submit_decision(instance_id, gate_id, "grant"|"reject", principal)` — resolves the gate;
+  `grant` advances to `published`, `reject` returns to `draft`. Self-approval is refused.
+
+Watch it run:
+
+```bash
+php bin/process.php --auto-approve   # instantiate → gate → grant → PUBLISHED
+php bin/process.php --reject         # instantiate → gate → reject → back to review
+```
+
+The load-bearing property: **state is never stored, only derived.** Every step is an append-only
+event in `var/events.jsonl`; the current state is a *projection* of that log. A brand-new store over
+the same file reconstructs `published` independently — which is what makes the whole history
+auditable and replayable (time-travel for free). It composes `milpa/workflow` (the state machine +
+the self-approval rule), `milpa/live` (the decision artifact, rendered to web or terminal), and
+`milpa/events`. This is a greenhouse: the contracts proven here become `milpa/orchestrator`.
+
 ## What implements what
 
-Three of the four published packages define the seams below; this repo implements the
-smallest possible host around them — ~940 lines of application code, of which ~440
-implement every framework seam. On purpose, so you can read every line. (The fourth,
-`milpa/mcp-server`, is consumed directly by `bin/mcp-server.php` — there's no local
-interface to implement, just a transport to wrap around the same registry.)
+Earlier versions of this repo implemented every framework seam inline (~440 lines: a container,
+an event dispatcher, a capability graph, a router). Those are gone — since v0.6.0 the app boots on
+**`milpa/runtime`**, which composes the published family (container + events + core's capability
+check + http routing) into one `Kernel::boot()`. What was a hand-rolled kernel is now a ~40-line
+bootstrap. The framework seams live in the packages where they belong; this repo implements only
+the *domain* on top of them:
 
-| Unit | Lines | Implements | Notes |
-|---|---|---|---|
-| `App\Container` | 146 | `Milpa\Interfaces\Di\DIContainerInterface` (`milpa/core`) | Explicit `registerService()` plus honest constructor autowiring — exactly what the published docblocks promise, no more. |
-| `App\EventDispatcher` | 82 | `Milpa\Interfaces\Event\MilpaEventDispatcherInterface` (`milpa/core`) | Priority ordering, the documented wildcard grammar (`*` matches exactly one dot-segment), and handler error isolation. |
-| `App\CapabilityGraph` | 52 | — (consumes core's `CapabilityProvision`/`CapabilityRequirement` VOs) | The "A provides / B requires" edge of the loop, checked before any plugin boots. |
-| `App\Http\Router` | 71 | `Milpa\Http\Routing\RouterInterface` (`milpa/http`) | Exact segments plus single-segment `{placeholder}`s; never throws, never returns null — `RouteResult` carries the outcome. |
-| `App\Kernel` | 89 | — (orchestrates the four above) | Container → dispatcher → capability check → ordered plugin boot → tool registry wiring. A miniature of a real Milpa host. |
+| Layer | What this repo implements | On top of |
+|---|---|---|
+| Boot | A thin bootstrap + a config-driven plugin list | `milpa/runtime` (`Kernel::boot`) |
+| Domain | The blog plugins (Storage / Blog / AgentTools) + the 5 blog/verification tools | `milpa/core` contracts + `milpa/tool-runtime` |
+| Transport | `bin/mcp-server.php` wraps the same registry over stdio | `milpa/mcp-server` |
+| Process | The orchestrator layer (`src/Orchestrator/`) — a post *as an event-sourced process* | `milpa/workflow` + `milpa/live` + `milpa/events` |
 
-You can implement the seams in an afternoon — this repo is the proof.
+The reduction is the point: the inline kernel retired with its tests green (they moved upstream into
+the packages that now own that behavior). Read the ~40-line bootstrap and the domain — the framework
+is no longer something you re-read here, it's something you `require`.
 
 ## What this example is NOT
 

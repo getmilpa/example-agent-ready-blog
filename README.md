@@ -89,10 +89,10 @@ for this example.
 | Stage | What runs | Published contract |
 |---|---|---|
 | **plugin** | `Kernel::boot()` instantiates `StoragePlugin`, `BlogPlugin`, `AgentToolsPlugin` | `Milpa\Interfaces\Plugin\PluginInterface` + `#[Milpa\Attributes\PluginMetadata]` (`milpa/core`) |
-| **capability** | `CapabilityGraph::check()` reads each plugin's `#[PluginMetadata]`, builds the VOs, and fails *before* boot if a `requires` has no `provides` | `Milpa\ValueObjects\Capability\{CapabilityProvision,CapabilityRequirement}` (`milpa/core`) |
+| **capability** | `Kernel::boot()` gates the plugin graph through the architecture resolver *before* anything boots: plugins boot in the report's `loadOrder[]`, and a `requires` with no `provides` throws `ArchitectureBlockedException` with a learnable message | `#[Milpa\Attributes\PluginMetadata]` capability records (`milpa/core`) resolved by `milpa/resolver` via `milpa/runtime` |
 | **tool** | `AgentToolsPlugin::registerTools()` scans `BlogTools`'s three `#[Tool]` methods into the registry | `Milpa\ToolRuntime\{Attributes\Tool,Attributes\Param,ToolScanner,ToolRegistry}` + `Milpa\Interfaces\Tooling\ToolProviderInterface` (`milpa/tool-runtime` on `milpa/core`) |
 | **verification** | `publish_post` asks `HumanVerifier::verify()`; a human approves or rejects at the terminal prompt | `Milpa\Interfaces\Verification\VerifierInterface` (`milpa/core`) + `Milpa\ToolRuntime\Verification\HumanVerifier` (`milpa/tool-runtime`) |
-| **event** | Every step above fires through one shared dispatcher — `verification.requested` / `verification.granted` / `verification.rejected` / `post.published` — printed live by name | `Milpa\Interfaces\Event\MilpaEventDispatcherInterface` (`milpa/core`), implemented here by `App\EventDispatcher` |
+| **event** | Every step above fires through one shared dispatcher — `verification.requested` / `verification.granted` / `verification.rejected` / `post.published` — printed live by name | `Milpa\Interfaces\Event\MilpaEventDispatcherInterface` (`milpa/core`), implemented by `milpa/events`' `EventDispatcher` |
 | **result** | `BlogPlugin`'s `verification.granted` handler flips the post to `published` and dispatches `post.published` — the result arrives *via event*, not a return value | `src/Plugins/BlogPlugin/BlogPlugin.php` (this repo) |
 
 ## What an agent sees
@@ -297,8 +297,8 @@ is no longer something you re-read here, it's something you `require`.
 ## What this example is NOT
 
 - **Not production.** Storage is a plain JSON file (`var/posts.json`), there's no auth, and
-  `App\Container` has no compiled/cached resolution — it's a from-scratch DI container that
-  happens to satisfy the published interface.
+  the DI container (`milpa/container`, via `milpa/runtime`) does no compiled/cached
+  resolution here.
 - **Not a template to fork for a real blog.** It's a template for understanding the loop.
 - **Mutations enter via tools, not HTTP** — that's the point. The web view
   (`php -S localhost:8080 -t public`) is read-only by design: publishing a post always goes
@@ -308,16 +308,27 @@ is no longer something you re-read here, it's something you `require`.
 
 ## The family
 
-This example consumes four published Milpa packages, unmodified, from Packagist:
+This example consumes the published Milpa family, unmodified, from Packagist — riding the
+current tree (`milpa/core ^0.6`, `milpa/runtime ^0.4`; `milpa/resolver` and `milpa/command`
+arrive transitively). The load-bearing packages:
 
 - [`milpa/core`](https://packagist.org/packages/milpa/core) — the contracts core ·
   [API reference](https://getmilpa.github.io/core/)
+- [`milpa/runtime`](https://packagist.org/packages/milpa/runtime) — the bootable kernel
+  (`Kernel::boot()`, the resolver gate) · [API reference](https://getmilpa.github.io/runtime/)
 - [`milpa/http`](https://packagist.org/packages/milpa/http) — PSR-15-native routing
   contracts · [API reference](https://getmilpa.github.io/http/)
 - [`milpa/tool-runtime`](https://packagist.org/packages/milpa/tool-runtime) — the
   agent-tool-execution engine · [API reference](https://getmilpa.github.io/tool-runtime/)
 - [`milpa/mcp-server`](https://packagist.org/packages/milpa/mcp-server) — the MCP
   transport core (JSON-RPC 2.0 over the tool registry) · [API reference](https://getmilpa.github.io/mcp-server/)
+- [`milpa/orchestrator`](https://packagist.org/packages/milpa/orchestrator) — the
+  event-sourced process engine, over
+  [`milpa/event-store`](https://packagist.org/packages/milpa/event-store),
+  [`milpa/workflow`](https://packagist.org/packages/milpa/workflow) and
+  [`milpa/live`](https://packagist.org/packages/milpa/live)
+- [`milpa/data`](https://packagist.org/packages/milpa/data) — runtime-native persistence
+  (`EntityInterface` + `FileRepository`)
 
 ## Contributing
 
@@ -327,8 +338,8 @@ issues via [SECURITY.md](SECURITY.md), and note that this project follows a
 
 ## License
 
-[Apache-2.0](LICENSE) © TeamX Agency.
+[Apache-2.0](LICENSE) © Rodrigo Vicente - TeamX Agency.
 
 ---
 
-Milpa is designed, built, and maintained by **[TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=example-agent-ready-blog)**.
+Milpa is designed, built, and maintained by **[Rodrigo Vicente - TeamX Agency](https://teamx.agency/?utm_source=github&utm_medium=readme&utm_campaign=milpa&utm_content=example-agent-ready-blog)**.

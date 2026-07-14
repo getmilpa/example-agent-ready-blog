@@ -12,7 +12,7 @@ final class DemoTest extends TestCase
 {
     private function runDemo(?string $decision, string $stdin = ''): array
     {
-        $file = sys_get_temp_dir() . '/posts-' . uniqid() . '.json';
+        $file = sys_get_temp_dir() . '/posts-' . uniqid() . '.db';
         $in = fopen('php://memory', 'r+');
         fwrite($in, $stdin);
         rewind($in);

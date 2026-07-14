@@ -294,10 +294,30 @@ The reduction is the point: the inline kernel retired with its tests green (they
 the packages that now own that behavior). Read the ~40-line bootstrap and the domain — the framework
 is no longer something you re-read here, it's something you `require`.
 
+## The storage backend is one config line
+
+Since `milpa/data` 0.2, `StoragePlugin` names **no backend**. It hands the app's `storage`
+config block to `RepositoryFactory::fromConfig()` and registers whatever comes back behind the
+same `RepositoryInterface` capability `BlogPlugin` requires. The block lives in
+`Kernel::boot()`:
+
+```php
+$storage = [
+    'driver' => 'sqlite',   // ⇄ 'file' ⇄ 'mysql' ⇄ 'memory' — the whole migration is this line
+    'path' => $storageFile ?? $root . '/var/blog.db',
+];
+```
+
+This example shipped on `'file'` (the whole collection in one JSON file, `var/posts.json`)
+until 0.2 landed; today it ships on `'sqlite'` (a real database in one file, `var/blog.db`).
+The switch touched zero plugin, tool, or test code — the same 36-test suite and the same
+`php bin/blog.php --auto-approve` loop prove both backends. Flip the driver back and they
+still do.
+
 ## What this example is NOT
 
-- **Not production.** Storage is a plain JSON file (`var/posts.json`), there's no auth, and
-  the DI container (`milpa/container`, via `milpa/runtime`) does no compiled/cached
+- **Not production.** Storage is a single-file SQLite database (`var/blog.db`), there's no
+  auth, and the DI container (`milpa/container`, via `milpa/runtime`) does no compiled/cached
   resolution here.
 - **Not a template to fork for a real blog.** It's a template for understanding the loop.
 - **Mutations enter via tools, not HTTP** — that's the point. The web view
@@ -328,7 +348,7 @@ arrive transitively). The load-bearing packages:
   [`milpa/workflow`](https://packagist.org/packages/milpa/workflow) and
   [`milpa/live`](https://packagist.org/packages/milpa/live)
 - [`milpa/data`](https://packagist.org/packages/milpa/data) — runtime-native persistence
-  (`EntityInterface` + `FileRepository`)
+  (`EntityInterface` + `RepositoryFactory` over the file / sqlite / mysql / memory backends)
 
 ## Contributing
 

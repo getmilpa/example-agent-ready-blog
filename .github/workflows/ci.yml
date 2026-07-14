@@ -44,5 +44,5 @@ jobs:
       - name: The loop itself (smoke, both paths)
         run: |
           php bin/blog.php --auto-approve | grep -q "PUBLISHED"
-          rm -f var/posts.json
+          rm -f var/blog.db
           php bin/blog.php --reject | grep -q "still a draft"

@@ -15,12 +15,11 @@ use Nyholm\Psr7Server\ServerRequestCreator;
 require __DIR__ . '/../vendor/autoload.php';
 
 // Explicit, cwd-independent path: PHP's built-in server chdir()s into the
-// docroot (-t public) for every request, so Kernel::boot()'s default
-// getcwd() . '/var/posts.json' would resolve to public/var/posts.json here
-// — a different file from the one bin/blog.php (run from the project root)
-// writes to. Passing the path explicitly keeps both entry points reading
-// and writing the same storage file regardless of the server's cwd.
-$kernel = Kernel::boot(__DIR__ . '/../var/posts.json');
+// docroot (-t public) for every request, so passing the path explicitly keeps
+// this entry point reading and writing the same storage file bin/blog.php
+// (run from the project root) uses — var/blog.db, the SQLite database
+// Kernel::boot()'s one-config-line `storage` block names.
+$kernel = Kernel::boot(__DIR__ . '/../var/blog.db');
 /** @var RepositoryInterface<Post> $storage */
 $storage = $kernel->container()->get(RepositoryInterface::class);
 

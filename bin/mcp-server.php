@@ -13,7 +13,7 @@ require __DIR__ . '/../vendor/autoload.php';
 // verification choreography as bin/blog.php, just a different transport.
 // Two optional positional arguments override the storage path and the orchestrator's event-log
 // path (Kernel::boot threads both through milpa/runtime's config bag); they default to
-// var/posts.json and var/events.jsonl respectively when omitted.
+// var/blog.db and var/events.jsonl respectively when omitted.
 $storageFile = $argv[1] ?? null;
 $eventsFile = $argv[2] ?? null;
 $kernel = Kernel::boot($storageFile, $eventsFile);

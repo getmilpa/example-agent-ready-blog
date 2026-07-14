@@ -2,6 +2,7 @@
 /composer.lock
 /.phpunit.cache/
 /.php-cs-fixer.cache
+/var/blog.db
 /var/posts.json
 /var/events.jsonl
 composer-dev.lock

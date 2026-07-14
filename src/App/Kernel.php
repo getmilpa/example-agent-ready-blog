@@ -40,12 +40,18 @@ final class Kernel
     public static function boot(?string $storageFile = null, ?string $eventsFile = null): self
     {
         $root = \dirname(__DIR__, 2);
-        // StoragePlugin is booted by the runtime via `new StoragePlugin($container)` and the
-        // config-driven registry cannot pass constructor args — so the storage path travels
-        // through milpa/runtime's app-config bag (the `config` key below registers a
-        // Milpa\Runtime\Config the plugin reads in boot()). Still overridable per-call for tests;
-        // defaults to var/posts.json under the host root.
-        $storageFile ??= $root . '/var/posts.json';
+        // THE BACKEND IS THIS ONE CONFIG LINE. `driver` picks the milpa/data backend —
+        // 'file' (one JSON file), 'sqlite' (a real database in one file), 'mysql' or 'memory' —
+        // and StoragePlugin hands the block to RepositoryFactory::fromConfig() untouched, so
+        // flipping the driver here re-homes every post with ZERO plugin/tool/test code changes.
+        // The path stays overridable per-call (tests, bin/mcp-server.php argv) because the
+        // config-driven plugin registry cannot pass constructor args — it travels through
+        // milpa/runtime's app-config bag (the `config` key below registers a Milpa\Runtime\Config
+        // the plugin reads in boot()).
+        $storage = [
+            'driver' => 'sqlite', // ← was 'file' + var/posts.json until milpa/data 0.2 — that whole migration is this line
+            'path' => $storageFile ?? $root . '/var/blog.db',
+        ];
         // Same seam, same reason, for the orchestrator's append-only event log (AgentToolsPlugin
         // reads `orchestrator.events_path` when it wires the 3 process tools) — defaults to
         // var/events.jsonl under the host root, per the plan's zero-DB event store.
@@ -66,7 +72,7 @@ final class Kernel
             'dispatcher' => $dispatcher,
             'toolRegistry' => $registry,
             'config' => [
-                'storage' => ['path' => $storageFile],
+                'storage' => $storage,
                 'orchestrator' => ['events_path' => $eventsFile],
             ],
             'plugins' => [

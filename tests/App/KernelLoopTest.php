@@ -17,7 +17,9 @@ final class KernelLoopTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->file = sys_get_temp_dir() . '/posts-' . uniqid() . '.json';
+        // .db because Kernel::boot()'s shipped storage driver is sqlite — the path is the only
+        // override; the backend itself is the one config line in Kernel::boot().
+        $this->file = sys_get_temp_dir() . '/posts-' . uniqid() . '.db';
         $this->kernel = Kernel::boot($this->file);
     }
 

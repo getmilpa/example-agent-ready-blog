@@ -29,7 +29,7 @@ final class McpStdioTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->storageFile = sys_get_temp_dir() . '/mcp-stdio-' . uniqid() . '.json';
+        $this->storageFile = sys_get_temp_dir() . '/mcp-stdio-' . uniqid() . '.db';
 
         $descriptors = [
             0 => ['pipe', 'r'],

@@ -5,8 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export COMPOSER=composer-dev.json
 composer update --no-interaction --quiet
-rm -f var/posts.json
+rm -f var/posts.json var/blog.db
 php bin/blog.php --auto-approve | grep -q "PUBLISHED" && echo "canary GRANT ✓"
-rm -f var/posts.json
+rm -f var/posts.json var/blog.db
 php bin/blog.php --reject | grep -q "still a draft" && echo "canary REJECT ✓"
 vendor/bin/phpunit --testsuite ExampleBlog 2>&1 | tail -1

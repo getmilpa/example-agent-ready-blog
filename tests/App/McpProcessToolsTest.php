@@ -33,7 +33,7 @@ final class McpProcessToolsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->storageFile = sys_get_temp_dir() . '/mcp-process-storage-' . uniqid() . '.json';
+        $this->storageFile = sys_get_temp_dir() . '/mcp-process-storage-' . uniqid() . '.db';
         $this->eventsFile = sys_get_temp_dir() . '/mcp-process-events-' . uniqid() . '.jsonl';
 
         $descriptors = [

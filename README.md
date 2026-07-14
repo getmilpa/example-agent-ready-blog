@@ -329,7 +329,7 @@ still do.
 ## The family
 
 This example consumes the published Milpa family, unmodified, from Packagist — riding the
-current tree (`milpa/core ^0.6`, `milpa/runtime ^0.4`; `milpa/resolver` and `milpa/command`
+current tree (`milpa/core ^0.6`, `milpa/runtime ^0.5`; `milpa/resolver` and `milpa/command`
 arrive transitively). The load-bearing packages:
 
 - [`milpa/core`](https://packagist.org/packages/milpa/core) — the contracts core ·

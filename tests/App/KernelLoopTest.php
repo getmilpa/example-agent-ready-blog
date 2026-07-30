@@ -7,6 +7,7 @@ namespace Milpa\ExampleBlog\Tests\App;
 use Milpa\Data\RepositoryInterface;
 use Milpa\ExampleBlog\App\Kernel;
 use Milpa\ToolRuntime\Contracts\ToolContext;
+use Milpa\ToolRuntime\Identity\VerifiedSigner;
 use Milpa\ValueObjects\Verification\VerificationRequest;
 use PHPUnit\Framework\TestCase;
 
@@ -26,6 +27,25 @@ final class KernelLoopTest extends TestCase
     protected function tearDown(): void
     {
         @unlink($this->file);
+    }
+
+    /**
+     * Un contexto autorizado por una firma verificada — la única forma de consentir en el canal cli
+     * desde tool-runtime 0.8.
+     *
+     * El firmante se construye a mano porque lo que se prueba aquí es la FORMA del consentimiento,
+     * no la criptografía: el gate mira `signer.fingerprint`, que sólo puede estar ahí porque una
+     * firma verificó, y `ToolContext::authorizedBy()` es la única fábrica que lo escribe.
+     */
+    private function conFirma(): ToolContext
+    {
+        return ToolContext::authorizedBy(
+            new VerifiedSigner(
+                fingerprint: '9A2C41F0E7B38D5641AA0C2E7D5FB9C3A18E4402',
+                uid: 'test@milpa.lat',
+            ),
+            ['blog.publish'],
+        );
     }
 
     public function testBootRegistersTheEightTools(): void
@@ -54,18 +74,20 @@ final class KernelLoopTest extends TestCase
         $id = $draft->data['id'];
         $this->assertSame('draft', $draft->data['status']);
 
-        // publish_post es confirm:true → primera llamada devuelve el confirm-token del registry
-        $gate = $registry->call('publish_post', ['id' => $id], $ctx);
-        $this->assertTrue($gate->success);
-        $this->assertArrayHasKey('confirm_token', $gate->data);
+        // publish_post pide consentimiento explícito, y en el canal cli el consentimiento ES una
+        // firma que nombra esta llamada: un `--yes` consiente en abstracto y el mismo sí valdría
+        // para cualquier post. Sin firma la llamada se NIEGA — no entrega un token que redimir.
+        $negado = $registry->call('publish_post', ['id' => $id], $ctx);
+        $this->assertFalse($negado->success, 'sin firma la publicación no procede');
+        $this->assertStringContainsString('signature', (string) $negado->error);
 
         $events = [];
         $this->kernel->dispatcher()->subscribe('verification.*', function (string $e) use (&$events): void {
             $events[] = $e;
         });
 
-        // redimiendo el token corre el tool → seam de verificación → PENDING + verification.requested
-        $pending = $registry->call('publish_post', ['id' => $id, 'confirm_token' => $gate->data['confirm_token']], $ctx);
+        // Con la firma presentada el tool corre → seam de verificación → PENDING + verification.requested
+        $pending = $registry->call('publish_post', ['id' => $id], $this->conFirma());
         $this->assertTrue($pending->success);
         $this->assertSame('pending_verification', $pending->data['status']);
         $this->assertSame(['verification.requested'], $events);
@@ -84,8 +106,13 @@ final class KernelLoopTest extends TestCase
         $registry = $this->kernel->registry();
         $ctx = ToolContext::cli();
         $id = $registry->call('create_post', ['title' => 'No', 'body' => 'Nope'], $ctx)->data['id'];
-        $gate = $registry->call('publish_post', ['id' => $id], $ctx);
-        $pending = $registry->call('publish_post', ['id' => $id, 'confirm_token' => $gate->data['confirm_token']], $ctx);
+
+        // Esta prueba pasaba por la razón equivocada: sin firma la primera llamada se niega, así que
+        // nada llegaba al seam de verificación y «sigue en draft» se cumplía porque no había pasado
+        // NADA. Ahora el post llega de verdad a pending_verification antes de rechazarse.
+        $pending = $registry->call('publish_post', ['id' => $id], $this->conFirma());
+        $this->assertTrue($pending->success);
+        $this->assertSame('pending_verification', $pending->data['status']);
 
         $request = new VerificationRequest(subject: $pending->data['subject'], requestedBy: 'agent:demo', id: $pending->data['request_id']);
         $result = $this->kernel->verifier()->reject($request, 'human:test', 'not good enough');

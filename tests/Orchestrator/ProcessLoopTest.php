@@ -202,11 +202,15 @@ final class ProcessLoopTest extends TestCase
     public function testSubmitDecisionSelfApprovalIsRejectedCleanly(): void
     {
         [$instantiate, $list, $submit] = $this->tools();
-        // ProcessInstantiateTool records ToolContext::cli()'s principal ('cli') as the requester.
+        // ProcessInstantiateTool records ToolContext::cli()'s principal as the requester. Asked for
+        // rather than spelled out: tool-runtime 0.8 renamed that principal from 'cli' to
+        // 'local-shell' — `cli` became the CHANNEL — and this test used to hardcode the old string.
+        // With the literal, the requester and the approver stopped matching, so the self-approval
+        // guard never fired and the call just succeeded: the test still ran, and guarded nothing.
         $instanceId = $instantiate->instantiate(PublishPostProcess::NAME, ['post_id' => 1])->data['instance_id'];
         $gateId = $list->list()->data['pending'][0]['gate_id'];
 
-        $result = $submit->submit($instanceId, $gateId, 'grant', 'cli');
+        $result = $submit->submit($instanceId, $gateId, 'grant', ToolContext::cli()->principal);
 
         $this->assertFalse($result->success);
         $this->assertSame('SELF_APPROVAL_FORBIDDEN', $result->error);

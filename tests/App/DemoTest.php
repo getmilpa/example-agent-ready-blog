@@ -31,7 +31,12 @@ final class DemoTest extends TestCase
         $this->assertSame(0, $code);
         $this->assertStringContainsString('Capability graph', $out);
         $this->assertStringContainsString('create_post', $out);
-        $this->assertStringContainsString('confirm_token', $out);
+        // Lo que el demo enseña ahora: primero la NEGATIVA en el canal cli, después la firma que
+        // nombra la llamada. Antes esto afirmaba 'confirm_token' — el flujo que tool-runtime 0.8
+        // dejó de hacer — y la aserción sobrevivió al cambio del demo.
+        $this->assertStringContainsString('DENIED', $out);
+        $this->assertStringContainsString('signature naming this call', $out);
+        $this->assertStringContainsString('firma verificada', $out);
         $this->assertStringContainsString('verification.requested', $out);
         $this->assertStringContainsString('verification.granted', $out);
         $this->assertStringContainsString('PUBLISHED', $out);

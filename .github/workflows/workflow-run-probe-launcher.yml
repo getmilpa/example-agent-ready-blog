@@ -1,0 +1,18 @@
+name: workflow_run probe launcher
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-source-with-github-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the source workflow with this run's GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: gh workflow run workflow-run-probe-source.yml --repo "$REPO" --ref main

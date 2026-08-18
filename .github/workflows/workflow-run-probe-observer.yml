@@ -1,0 +1,23 @@
+name: workflow_run probe observer
+
+on:
+  workflow_run:
+    workflows: [workflow_run probe source]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  observed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record the observed run
+        env:
+          SOURCE_ACTOR: ${{ github.event.workflow_run.actor.login }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event }}
+          SOURCE_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          echo "observer run=$GITHUB_RUN_ID event=$GITHUB_EVENT_NAME"
+          echo "source run=$SOURCE_ID actor=$SOURCE_ACTOR event=$SOURCE_EVENT conclusion=$SOURCE_CONCLUSION"

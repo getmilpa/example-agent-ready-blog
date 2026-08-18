@@ -1,0 +1,16 @@
+name: workflow_run probe source
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record the source run
+        run: |
+          echo "source run=$GITHUB_RUN_ID actor=$GITHUB_ACTOR event=$GITHUB_EVENT_NAME"
+          echo "This run was dispatched by the launcher's GITHUB_TOKEN."

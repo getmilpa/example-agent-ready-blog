@@ -170,3 +170,46 @@ in-process. Everything below surfaced building `bin/mcp-server.php` + the
   byte-for-byte on the real wire in `McpStdioTest::testFullChoreographyGrantPath` by
   asserting on the raw JSON line, not the PHP-decoded array (`json_decode` collapses `{}`
   and `[]` to the same empty-array value and would have silently hidden a regression).
+
+## A person's identity for a gate (`milpa/orchestrator` 0.13 + `milpa/tool-runtime` 0.19)
+
+Found while moving the process loop from "the caller names the approver" to "a person signs the
+decision" (`src/Identity/`, `bin/enroll.php`, `bin/decide.php`).
+
+- **`process_submit_decision` decides "verified" by spelling, not by provenance.** It refuses three
+  principals — `local-shell`, `stdio`, `mcp` (`ProcessSubmitDecisionTool::UNVERIFIED`) — and
+  accepts any other string as a verified actor. `ToolContext::stdio()` takes the principal as its
+  second argument, so `ToolContext::stdio($id, 'human:anyone')` answers a gate: measured here, the
+  post went to `published`. The engine has no way to know better — only the host knows what it
+  verified — but nothing in the context records *that* it was verified either. `PolicyGate` already
+  does it the other way for consent: it looks for `extra['signer.fingerprint']`, which only
+  `ToolContext::authorizedBy()` writes. This example holds its own half with a test that scans
+  `src/` and `bin/` (`tests/Identity/OnlyTheDeskMakesSomebodyTest.php`); a marker the gate could
+  check would move that guarantee into the framework.
+- **`GnupgSignatureVerifier` cannot be told which keyring to trust.** Its constructor takes the gpg
+  binary and nothing else, so it verifies against the ambient `GNUPGHOME` — by default the
+  `~/.gnupg` of whoever runs the process, where every public key that person ever imported would
+  count as a signer. A host that wants "the keys *I* enrolled" has to mutate the process
+  environment around each call (`src/Identity/HouseKeyringVerifier.php` does, and puts it back). A
+  `homedir`/keyring argument would make the trust root explicit and the wrapper unnecessary.
+- **There is a verifying half and no signing half.** `OperationAuthorization::canonical()` gives the
+  bytes and `OperationAuthorizer` checks a signature over them, but producing that signature is
+  left to each host: this example shells out to `gpg --detach-sign` itself (`EditorKey::sign()`).
+  A terminal host and a demo will both write that same dozen lines.
+- **The removed `principal` argument is ignored, not rejected.** The tool's schema no longer
+  declares it and has no `additionalProperties: false`, so a caller still sending
+  `principal: "human:you"` gets no error about the argument — only the refusal for who it really
+  is. Correct outcome; a caller migrating from 0.10 gets no hint about *why*.
+- **`resolve_verification` (tool-runtime) still takes the resolver's name as an argument.** It is
+  the same shape orchestrator closed in 0.11: over stdio an agent resolves its own verification by
+  typing a name. This example's first loop still does exactly that in `tests/App/McpStdioTest.php`,
+  and its README says so; closing it here needs the resolver to come from the context upstream.
+- **orchestrator's README teaches the hand-built context.** Its quick example answers the gate
+  under `ToolContext::mcp('req-2', 'human:editor', ['*'])`, and nowhere shows the step from a
+  signature or a session to that context — the step a first consumer most needs. Its
+  "Requirements" section also still lists `milpa/core ^0.6`, `milpa/live ^0.1` and
+  `milpa/tool-runtime ^0.5.1` against a `composer.json` that requires `>=0.12`, `>=0.4`, `>=0.9`.
+- **Positive counter-example, worth naming**: the upgrade itself. Fourteen packages forward in one
+  `composer update` (orchestrator 0.4 → 0.13, tool-runtime 0.9 → 0.19, core 0.7 → 0.12, runtime 0.7 → 0.17) and
+  the only thing in this repo that broke was the thing the breaking changes were aimed at: the ten
+  tests that answered a gate by naming an approver.

@@ -2,9 +2,9 @@
 
 Thanks for your interest in contributing! This repo is a runnable example of the Milpa
 loop — `plugin → capability → tool → verification → event → result` — as a tiny
-agent-ready blog: a `Kernel`, three plugins, and a handful of contract-faithful inline
-implementations (`Container`, `EventDispatcher`, `CapabilityGraph`, `Router`) small enough
-to read in one sitting.
+agent-ready blog: a thin `Kernel` over `milpa/runtime`, three plugins, a process loop on
+`milpa/orchestrator`, and the small identity layer that decides who may answer a gate —
+all small enough to read in one sitting.
 
 ## Getting started
 
@@ -13,11 +13,17 @@ composer install
 vendor/bin/phpunit --testsuite ExampleBlog
 vendor/bin/phpstan analyse --no-progress
 php bin/blog.php --auto-approve
+php bin/process.php && php bin/enroll.php && php bin/decide.php --grant
 ```
 
-These run in CI on PHP 8.3 and 8.4 (alongside `composer validate --strict`, a `php -l`
-syntax pass, and the loop smoke test — `bin/blog.php` run both `--auto-approve` and
-`--reject`); run them locally before opening a PR.
+You need `gpg` on your machine: in the process loop a human decision is an OpenPGP signature,
+and the suite makes real (throwaway) keys to sign with. Without it those tests are skipped
+locally — and fail in CI, where a skipped guard would guard nothing.
+
+These run in CI on PHP 8.3 and 8.4 (alongside `composer validate --strict`, the dependency
+license gate, a `php -l` syntax pass, and two smoke tests — `bin/blog.php` run both
+`--auto-approve` and `--reject`, and the process loop run as its two sessions); run them
+locally before opening a PR.
 
 ## Guidelines
 
@@ -28,6 +34,13 @@ syntax pass, and the loop smoke test — `bin/blog.php` run both `--auto-approve
   three published packages as the only source of framework contracts: anything this repo
   implements inline (`src/App/*`) exists to demonstrate how small those contracts are to
   satisfy, not to become a fourth package.
+- **Nobody builds a verified identity by hand.** The agent's sessions run as what they are —
+  `ToolContext::cli()`, `ToolContext::stdio($id)` — and a person exists only as a signature
+  `Identity\SignedCallDesk` accepted. A test or a script that needs a human decision makes a
+  person (a key generated for the occasion — see `tests/Support/Sandbox.php`) and has them
+  sign. `tests/Identity/OnlyTheDeskMakesSomebodyTest.php` fails the build otherwise.
+- **Never commit a key, a token, or anything under `var/`.** The demo identity is generated on
+  the machine that runs it.
 - **[Conventional Commits](https://www.conventionalcommits.org/)** are preferred for a
   readable history, but this repo does **not** run release-please — examples don't
   version in lockstep with the family. Tags are cut manually.

@@ -46,3 +46,12 @@ jobs:
           php bin/blog.php --auto-approve | grep -q "PUBLISHED"
           rm -f var/blog.db
           php bin/blog.php --reject | grep -q "still a draft"
+      - name: The process loop (smoke) — the agent is refused, a person's signature decides
+        run: |
+          rm -f var/blog.db var/events.jsonl
+          agent=$(php bin/process.php); echo "$agent"
+          grep -q "REFUSED · UNVERIFIED_APPROVER" <<<"$agent"
+          grep -q "is still a DRAFT" <<<"$agent"
+          php bin/enroll.php | grep -q "DEMO identity"
+          person=$(php bin/decide.php --grant); echo "$person"
+          grep -q "now PUBLISHED" <<<"$person"

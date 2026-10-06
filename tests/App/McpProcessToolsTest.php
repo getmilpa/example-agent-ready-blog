@@ -4,20 +4,25 @@ declare(strict_types=1);
 
 namespace Milpa\ExampleBlog\Tests\App;
 
+use Milpa\ExampleBlog\Tests\Support\Sandbox;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Drives `bin/mcp-server.php` as a real subprocess over its actual stdin/stdout pipes — same
- * harness as {@see McpStdioTest} — to prove the 3 process tools ride the SAME registry: they
- * appear in `tools/list`, and `tools/call process_instantiate` followed by
- * `process_submit_decision` advances a real, event-sourced process instance end-to-end over the
- * wire.
+ * TWO SESSIONS, ONE HOUSE — over the real wire.
+ *
+ * Session 1 is an agent: `bin/mcp-server.php` driven as a real subprocess over its actual
+ * stdin/stdout pipes (same harness as {@see McpStdioTest}). It proves the 3 process tools ride the
+ * SAME registry — they appear in `tools/list` — and that an MCP stdio caller can start a process and
+ * read its gate, and can NOT answer it: `stdio` names a pipe, not a person, and the retired
+ * `principal` argument is no longer read.
+ *
+ * Session 2 is a person: `bin/decide.php`, a separate process, signing the decision with a key of
+ * its own that the house enrolled. The two sessions share nothing but the house's files — the event
+ * log and the database — and the agent's still-open pipe then sees what the person decided.
  */
 final class McpProcessToolsTest extends TestCase
 {
-    private string $storageFile;
-
-    private string $eventsFile;
+    private Sandbox $sandbox;
 
     /** @var resource */
     private $process;
@@ -33,8 +38,7 @@ final class McpProcessToolsTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->storageFile = sys_get_temp_dir() . '/mcp-process-storage-' . uniqid() . '.db';
-        $this->eventsFile = sys_get_temp_dir() . '/mcp-process-events-' . uniqid() . '.jsonl';
+        $this->sandbox = Sandbox::create();
 
         $descriptors = [
             0 => ['pipe', 'r'],
@@ -42,12 +46,13 @@ final class McpProcessToolsTest extends TestCase
             2 => ['pipe', 'w'],
         ];
 
-        // Both temp paths are injected as bin/mcp-server.php's positional arguments, which
+        // Both paths are injected as bin/mcp-server.php's positional arguments, which
         // Kernel::boot() threads through milpa/runtime's config bag — no env var, no global
         // state, and no cross-test pollution of the shared var/events.jsonl the demo defaults to.
+        // The agent's server is told nothing about keys: it has no use for them.
         $projectRoot = \dirname(__DIR__, 2);
         $process = proc_open(
-            [\PHP_BINARY, $projectRoot . '/bin/mcp-server.php', $this->storageFile, $this->eventsFile],
+            [\PHP_BINARY, $projectRoot . '/bin/mcp-server.php', $this->sandbox->storage(), $this->sandbox->events()],
             $descriptors,
             $pipes,
             $projectRoot,
@@ -66,8 +71,7 @@ final class McpProcessToolsTest extends TestCase
         fclose($this->stdout);
         fclose($this->stderr);
         proc_close($this->process);
-        @unlink($this->storageFile);
-        @unlink($this->eventsFile);
+        $this->sandbox->destroy();
     }
 
     public function testTheThreeProcessToolsAppearInToolsList(): void
@@ -90,7 +94,7 @@ final class McpProcessToolsTest extends TestCase
         ], $names);
     }
 
-    public function testInstantiateThenSubmitDecisionAdvancesTheProcessOverStdio(): void
+    public function testAnAgentOverStdioCanProposeAndCannotAnswerItsOwnGate(): void
     {
         $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
 
@@ -110,41 +114,88 @@ final class McpProcessToolsTest extends TestCase
         $this->assertSame($instanceId, $pending['data']['pending'][0]['instance_id']);
         $gateId = $pending['data']['pending'][0]['gate_id'];
 
-        $submit = $this->callTool('process_submit_decision', [
+        // The agent answers its own gate. It is a caller the transport never verified — 'stdio' is
+        // whoever holds the pipe — so the gate does not take its answer.
+        $asItself = $this->callTool('process_submit_decision', [
             'instance_id' => $instanceId,
             'gate_id' => $gateId,
             'decision' => 'grant',
-            // ToolContext::stdio() defaults process_instantiate's requester to principal 'stdio' —
-            // this MUST differ, or resolve() throws SelfApprovalException.
-            'principal' => 'human:mcp-process-test',
         ], 5);
-        $this->assertTrue($submit['success']);
-        $this->assertSame('published', $submit['data']['current_state']);
+        $this->assertFalse($asItself['success']);
+        $this->assertSame('UNVERIFIED_APPROVER', $asItself['error']);
+
+        // The old way through: name a human. This is exactly what this test used to do —
+        // `'principal' => 'human:mcp-process-test'`, "so resolve() does not throw
+        // SelfApprovalException" — and it worked, which was the hole. The argument is gone from the
+        // tool's schema; sent anyway, it is not read.
+        $asSomebodyElse = $this->callTool('process_submit_decision', [
+            'instance_id' => $instanceId,
+            'gate_id' => $gateId,
+            'decision' => 'grant',
+            'principal' => 'human:mcp-process-test',
+        ], 6);
+        $this->assertFalse($asSomebodyElse['success']);
+        $this->assertSame('UNVERIFIED_APPROVER', $asSomebodyElse['error']);
+
+        // Nothing moved: the gate is still open and the post is still a draft.
+        $this->assertCount(1, $this->callTool('process_list_pending_approvals', [], 7)['data']['pending']);
+        $this->assertSame('draft', $this->statusOf($id, 8));
     }
 
-    public function testRejectPathOverStdioReopensAFreshGate(): void
+    public function testThePrincipalArgumentIsGoneFromTheSchemaAnAgentIsShown(): void
     {
         $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
 
-        $id = $this->callTool('create_post', ['title' => 'Reject over stdio', 'body' => 'body'], 2)['data']['id'];
-        $instantiate = $this->callTool('process_instantiate', [
+        $tools = $this->call(['jsonrpc' => '2.0', 'method' => 'tools/list', 'id' => 2])['result']['tools'];
+        $submit = array_values(array_filter($tools, static fn (array $t): bool => $t['name'] === 'process_submit_decision'))[0];
+
+        $arguments = array_keys($submit['inputSchema']['properties']);
+        sort($arguments);
+        $this->assertSame(['decision', 'gate_id', 'instance_id'], $arguments);
+    }
+
+    public function testAPersonDecidesFromTheirOwnSessionAndTheAgentSeesThePostPublished(): void
+    {
+        $editor = $this->sandbox->editor();
+        $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
+
+        // Session 1 — the agent, over the pipe.
+        $id = $this->callTool('create_post', ['title' => 'Two sessions', 'body' => 'one proposes, one disposes'], 2)['data']['id'];
+        $instanceId = $this->callTool('process_instantiate', [
             'definition' => 'publish_post',
             'inputs' => ['post_id' => $id],
-        ], 3);
-        $instanceId = $instantiate['data']['instance_id'];
-        $gateId = $this->callTool('process_list_pending_approvals', [], 4)['data']['pending'][0]['gate_id'];
+        ], 3)['data']['instance_id'];
 
-        $submit = $this->callTool('process_submit_decision', [
-            'instance_id' => $instanceId,
-            'gate_id' => $gateId,
-            'decision' => 'reject',
-            'principal' => 'human:mcp-process-test',
-        ], 5);
-        $this->assertTrue($submit['success']);
-        $this->assertSame('review_gate', $submit['data']['current_state']);
+        // Session 2 — a person, in a process of their own, with a key the agent's process never sees.
+        [$exit, $out, $err] = $this->sandbox->run('decide.php', ['--grant', '--instance=' . $instanceId]);
+        $this->assertSame(0, $exit, $out . $err);
+        $this->assertStringContainsString('signed by ' . $editor->fingerprint(), $out);
+        $this->assertStringContainsString('now PUBLISHED', $out);
 
-        $pendingAgain = $this->callTool('process_list_pending_approvals', [], 6);
-        $this->assertCount(1, $pendingAgain['data']['pending']);
+        // Back in session 1: the agent's still-open pipe sees what the person decided.
+        $this->assertCount(0, $this->callTool('process_list_pending_approvals', [], 4)['data']['pending']);
+        $this->assertSame('published', $this->statusOf($id, 5));
+    }
+
+    public function testAPersonsRejectReopensAFreshGateTheAgentCanSee(): void
+    {
+        $this->sandbox->editor();
+        $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
+
+        $id = $this->callTool('create_post', ['title' => 'Reject over two sessions', 'body' => 'body'], 2)['data']['id'];
+        $instanceId = $this->callTool('process_instantiate', [
+            'definition' => 'publish_post',
+            'inputs' => ['post_id' => $id],
+        ], 3)['data']['instance_id'];
+
+        [$exit, $out, $err] = $this->sandbox->run('decide.php', ['--reject', '--instance=' . $instanceId]);
+        $this->assertSame(0, $exit, $out . $err);
+        $this->assertStringContainsString("back at 'review_gate'", $out);
+
+        $pendingAgain = $this->callTool('process_list_pending_approvals', [], 4)['data']['pending'];
+        $this->assertCount(1, $pendingAgain);
+        $this->assertSame($instanceId, $pendingAgain[0]['instance_id']);
+        $this->assertSame('draft', $this->statusOf($id, 5));
     }
 
     public function testInstantiatingACampaignSurfacesTheNestedChildGateOverStdio(): void
@@ -174,35 +225,50 @@ final class McpProcessToolsTest extends TestCase
         $this->assertSame(['grant', 'reject'], $options);
     }
 
-    public function testGrantingTheNestedChildGateDrivesTheCampaignToDoneOverStdio(): void
+    public function testAPersonGrantingTheNestedChildGateDrivesTheCampaignToDone(): void
     {
+        $this->sandbox->editor();
         $this->call(['jsonrpc' => '2.0', 'method' => 'initialize', 'params' => [], 'id' => 1]);
 
-        $id = $this->callTool('create_post', ['title' => 'Campaign grant over stdio', 'body' => 'body'], 2)['data']['id'];
-        $instantiate = $this->callTool('process_instantiate', [
+        $id = $this->callTool('create_post', ['title' => 'Campaign grant, two sessions', 'body' => 'body'], 2)['data']['id'];
+        $campaignId = $this->callTool('process_instantiate', [
             'definition' => 'publish_campaign',
             'inputs' => ['post_id' => $id],
-        ], 3);
-        $campaignId = $instantiate['data']['instance_id'];
+        ], 3)['data']['instance_id'];
 
         $child = $this->callTool('process_list_pending_approvals', [], 4)['data']['pending'][0];
         $this->assertNotSame($campaignId, $child['instance_id']);
 
-        // Resolving the LEAF child gate publishes the post AND routes subprocess_done up so the
-        // campaign reaches its own terminal `done` — all in this one submit over the wire.
-        $submit = $this->callTool('process_submit_decision', [
+        // The agent cannot answer the nested gate either: it is the requester all the way down.
+        $byTheAgent = $this->callTool('process_submit_decision', [
             'instance_id' => $child['instance_id'],
             'gate_id' => $child['gate_id'],
             'decision' => 'grant',
-            'principal' => 'human:mcp-campaign-test',
         ], 5);
-        $this->assertTrue($submit['success']);
-        $this->assertSame('published', $submit['data']['current_state']);
+        $this->assertSame('UNVERIFIED_APPROVER', $byTheAgent['error']);
+
+        // A person resolves the LEAF child gate from their own session. That one decision publishes
+        // the post AND routes subprocess_done up, so the campaign reaches its own terminal `done`.
+        [$exit, $out, $err] = $this->sandbox->run('decide.php', ['--grant', '--instance=' . $child['instance_id']]);
+        $this->assertSame(0, $exit, $out . $err);
+        $this->assertMatchesRegularExpression('/' . substr($campaignId, 0, 8) . '.*ProcessTerminalReached — done/', $out);
 
         // Nothing is pending anywhere anymore: the child AND the campaign both reached terminal —
         // the stdio-observable proof the whole nested chain finished.
-        $pendingAfter = $this->callTool('process_list_pending_approvals', [], 6);
-        $this->assertCount(0, $pendingAfter['data']['pending']);
+        $this->assertCount(0, $this->callTool('process_list_pending_approvals', [], 6)['data']['pending']);
+        $this->assertSame('published', $this->statusOf($id, 7));
+    }
+
+    /** The post's status as the agent's own session reads it, over the pipe. */
+    private function statusOf(int $postId, int $id): string
+    {
+        foreach ($this->callTool('list_posts', [], $id)['data']['posts'] as $post) {
+            if ($post['id'] === $postId) {
+                return $post['status'];
+            }
+        }
+
+        self::fail("post #{$postId} is not in list_posts");
     }
 
     /**

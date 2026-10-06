@@ -36,7 +36,10 @@ final class DemoTest extends TestCase
         // dejó de hacer — y la aserción sobrevivió al cambio del demo.
         $this->assertStringContainsString('DENIED', $out);
         $this->assertStringContainsString('signature naming this call', $out);
-        $this->assertStringContainsString('firma verificada', $out);
+        // Y el demo no llama «verificada» a una firma que nadie verificó: este bucle la arma a mano
+        // y lo dice. La firma de verdad vive en el bucle de procesos (ProcessDemoTest).
+        $this->assertStringContainsString('firma DE UTILERÍA', $out);
+        $this->assertStringNotContainsString('firma verificada', $out);
         $this->assertStringContainsString('verification.requested', $out);
         $this->assertStringContainsString('verification.granted', $out);
         $this->assertStringContainsString('PUBLISHED', $out);

@@ -6,12 +6,15 @@ namespace Milpa\ExampleBlog\App;
 
 use Milpa\Container\DIContainer;
 use Milpa\Eventing\EventDispatcher;
+use Milpa\ExampleBlog\Identity\ApproverKeyring;
+use Milpa\ExampleBlog\Identity\SignedCallDesk;
 use Milpa\ExampleBlog\Plugins\AgentToolsPlugin\AgentToolsPlugin;
 use Milpa\ExampleBlog\Plugins\BlogPlugin\BlogPlugin;
 use Milpa\ExampleBlog\Plugins\StoragePlugin\StoragePlugin;
 use Milpa\Interfaces\Di\DIContainerInterface;
 use Milpa\Interfaces\Event\MilpaEventDispatcherInterface;
 use Milpa\Runtime\Kernel as RuntimeKernel;
+use Milpa\ToolRuntime\Identity\FileNonceLedger;
 use Milpa\ToolRuntime\ToolRegistry;
 use Milpa\ToolRuntime\Verification\HumanVerifier;
 use Milpa\ToolRuntime\Verification\VerificationTool;
@@ -25,6 +28,10 @@ use Psr\Log\NullLogger;
  * {@see ToolRegistry} it seeds with the `request_verification`/`resolve_verification` tools before
  * handing the registry to the runtime as `$config['toolRegistry']`.
  *
+ * And one collaborator that is this application's own: the {@see SignedCallDesk}, the only place a
+ * verified identity is made. Every other context in this example names a transport (`local-shell`,
+ * `stdio`); a person exists here only as a signature the desk accepted.
+ *
  * This is the dogfood: the ~440 lines of inline Container/EventDispatcher/CapabilityGraph/Router
  * seams the example used to carry are gone — `milpa/runtime` supplies the faithful equivalents.
  */
@@ -34,10 +41,11 @@ final class Kernel
         private readonly RuntimeKernel $runtime,
         private readonly ToolRegistry $registry,
         private readonly HumanVerifier $verifier,
+        private readonly SignedCallDesk $desk,
     ) {
     }
 
-    public static function boot(?string $storageFile = null, ?string $eventsFile = null): self
+    public static function boot(?string $storageFile = null, ?string $eventsFile = null, ?string $identityDir = null): self
     {
         $root = \dirname(__DIR__, 2);
         // THE BACKEND IS THIS ONE CONFIG LINE. `driver` picks the milpa/data backend —
@@ -56,6 +64,9 @@ final class Kernel
         // reads `orchestrator.events_path` when it wires the 3 process tools) — defaults to
         // var/events.jsonl under the host root, per the plan's zero-DB event store.
         $eventsFile ??= $root . '/var/events.jsonl';
+        // What the house knows about people: the public keys it accepts a decision from, and the
+        // signed calls it has already honoured once. Public halves only — see ApproverKeyring.
+        $identityDir ??= $root . '/var/identity';
 
         $container = new DIContainer();
         $dispatcher = new EventDispatcher(new NullLogger());
@@ -82,7 +93,16 @@ final class Kernel
             ],
         ]);
 
-        return new self($runtime, $registry, $verifier);
+        // The name a signature must carry to be meant for THIS house: the machine and the log the
+        // decision lands in. A call signed for one blog is not a call signed for the one next to it.
+        $desk = new SignedCallDesk(
+            $registry,
+            new ApproverKeyring($identityDir . '/approvers'),
+            new FileNonceLedger($identityDir . '/spent'),
+            gethostname() . ':' . $eventsFile,
+        );
+
+        return new self($runtime, $registry, $verifier, $desk);
     }
 
     public function container(): DIContainerInterface
@@ -103,6 +123,11 @@ final class Kernel
     public function verifier(): HumanVerifier
     {
         return $this->verifier;
+    }
+
+    public function desk(): SignedCallDesk
+    {
+        return $this->desk;
     }
 
     /** @return list<object> */

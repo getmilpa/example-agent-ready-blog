@@ -5,4 +5,5 @@
 /var/blog.db
 /var/posts.json
 /var/events.jsonl
+/var/identity/
 composer-dev.lock

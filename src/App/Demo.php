@@ -68,14 +68,18 @@ final class Demo
         $this->say('  el canal cli no acepta un «sí» genérico — pide una firma que nombre ESTA llamada');
 
         // En un host real la firma se verifica y de ahí sale el VerifiedSigner. Aquí se construye
-        // uno para que el demo corra sin llaves: lo que se demuestra es la FORMA del consentimiento,
-        // no la criptografía, que vive en `milpa/governance`.
+        // uno A MANO para que este primer bucle corra sin llaves: lo que se demuestra es la FORMA
+        // del consentimiento, no la criptografía — y el demo lo dice en pantalla en vez de llamar
+        // «verificada» a una firma que nadie verificó. La de verdad está en este mismo repo: el
+        // bucle de procesos decide con una llave real, verificada por `Identity\SignedCallDesk`
+        // (bin/enroll.php, bin/decide.php).
         $firmante = new VerifiedSigner(
             fingerprint: '9A2C41F0E7B38D5641AA0C2E7D5FB9C3A18E4402',
             uid: 'demo@milpa.lat',
         );
         $conFirma = ToolContext::authorizedBy($firmante, ['blog.publish']);
-        $this->say('→ se presenta una firma verificada · ' . substr($firmante->fingerprint, 0, 8) . '… (' . $firmante->uid . ')');
+        $this->say('→ se presenta una firma DE UTILERÍA · ' . substr($firmante->fingerprint, 0, 8) . '… (' . $firmante->uid . ') — armada a mano, sin llave detrás');
+        $this->say('  este bucle enseña la FORMA del consentimiento; una firma de verdad decide en: php bin/process.php');
 
         $pending = $registry->call('publish_post', ['id' => $id], $conFirma);
         $this->say("→ autorizado por la firma … la herramienta corrió y preguntó al seam de VERIFICACIÓN (status: {$pending->data['status']})");

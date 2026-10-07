@@ -10,38 +10,45 @@ use Milpa\ToolRuntime\Contracts\ToolContext;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-// The interactive walkthrough for the PROCESS loop (mirrors bin/blog.php's verification loop):
-// instantiate a publish_post process, run it to its gate, render the DecisionArtifact to THIS
-// terminal, let a human grant/reject it, advance, print the outcome. --auto-approve / --reject
-// make it non-interactive for CI (see bin/process.php --auto-approve / --reject below).
-$decision = null;
-if (\in_array('--auto-approve', $argv, true)) {
-    $decision = 'grant';
-} elseif (\in_array('--reject', $argv, true)) {
-    $decision = 'reject';
-}
+// SESSION 1 OF 2 — THE AGENT PROPOSES.
+//
+// This terminal is the agent's. It drafts a post, starts the publish_post process, and the process
+// parks at its human gate. Then the agent does what an agent that wants its work shipped does next:
+// it tries to answer that gate itself. It is refused — first as itself, then again while naming
+// somebody else — and the post stays a draft.
+//
+// The decision is made in ANOTHER session, by a person, under that person's own signature:
+// `php bin/decide.php`. This script cannot make it, and has no flag that pretends to.
+//
+// --storage=<file> and --events=<file> override where the house keeps its posts and its event log;
+// the test suite uses them to run this against a throwaway house.
+$options = getopt('', ['storage:', 'events:']);
+$option = static fn (string $name): ?string => is_string($options[$name] ?? null) ? $options[$name] : null;
 
 $say = static function (string $line): void {
-    fwrite(STDOUT, $line . \PHP_EOL);
+    fwrite(STDOUT, $line . PHP_EOL);
 };
 
-$kernel = Kernel::boot();
+if (array_intersect(['--auto-approve', '--reject'], $argv) !== []) {
+    fwrite(STDERR, 'note: this script no longer decides anything — the agent proposes here, and a person decides with `php bin/decide.php --grant|--reject`.' . PHP_EOL);
+}
+
+$kernel = Kernel::boot($option('storage'), $option('events'));
 $registry = $kernel->registry();
-// The instantiating principal: 'cli' (ToolContext::cli()'s hard-coded identity). The human who
-// resolves the gate below uses a DIFFERENT principal ('human:you') so the demo never trips the
-// anti-self-approval invariant (HumanGate::resolve() throws SelfApprovalException otherwise).
-$ctx = ToolContext::cli();
+// Who the agent is to the house: 'local-shell'. That is the honest name for an unsigned terminal —
+// a process that reached the machine, not a person — and it is all an agent session ever has.
+$agent = ToolContext::cli();
 
 $say('');
-$say('milpa · example-agent-ready-blog — the PROCESS loop, live');
-$say('process_instantiate → [auto-advance] → review_gate → human decides → process_submit_decision → [auto-advance]');
+$say('milpa · example-agent-ready-blog — the PROCESS loop · session 1 of 2: the agent proposes');
+$say('process_instantiate → [auto-advance] → review_gate ⏸   a person answers it:  php bin/decide.php');
 $say('');
 
 $postTitle = 'Hello Milpa Process';
 $draft = $registry->call('create_post', [
     'title' => $postTitle,
     'body' => 'The publish_post process, demonstrated live: draft -> review_gate -> published.',
-], $ctx);
+], $agent);
 if (!$draft->success) {
     $say("✘ create_post failed: {$draft->error}");
 
@@ -52,10 +59,10 @@ $say("→ create_post(\"{$postTitle}\") … draft post #{$postId} created");
 
 $start = $registry->call('process_instantiate', [
     'definition' => 'publish_post',
-    // milpa/tool-runtime 0.6's #[Param(type: 'object')] takes `inputs` as a real object — a plain
-    // associative array on the wire, no JSON-string workaround (the greenhouse's old deviation).
+    // milpa/tool-runtime's #[Param(type: 'object')] takes `inputs` as a real object — a plain
+    // associative array on the wire, no JSON-string workaround.
     'inputs' => ['post_id' => $postId],
-], $ctx);
+], $agent);
 if (!$start->success) {
     $say("✘ process_instantiate failed: {$start->data}");
 
@@ -63,6 +70,7 @@ if (!$start->success) {
 }
 $instanceId = $start->data['instance_id'];
 $say("→ process_instantiate(publish_post, {post_id: {$postId}}) … instance {$instanceId} at {$start->data['current_state']}");
+$say("  requested by '{$agent->principal}' — the name of this terminal, not of a person: nobody verified who is typing");
 
 if ($start->data['current_state'] !== 'review_gate') {
     $say("✘ expected the process to auto-advance to review_gate, landed on {$start->data['current_state']} instead.");
@@ -70,9 +78,8 @@ if ($start->data['current_state'] !== 'review_gate') {
     exit(1);
 }
 
-$pendingList = $registry->call('process_list_pending_approvals', [], $ctx);
 $pending = null;
-foreach ($pendingList->data['pending'] as $row) {
+foreach ($registry->call('process_list_pending_approvals', [], $agent)->data['pending'] as $row) {
     if ($row['instance_id'] === $instanceId) {
         $pending = $row;
         break;
@@ -84,51 +91,43 @@ if ($pending === null) {
     exit(1);
 }
 
+// THE NEGATIVE CASE, ON PURPOSE. The agent can see the gate, knows its id, and can call the tool.
 $say('');
-$say('The decision artifact — the package tool returns its mounted {component, data}; this demo');
-$say('renders that structured snapshot for the terminal (rendering is the consumer\'s half):');
-$say('---');
-$artifactData = $pending['artifact']['data'];
-$say((string) $artifactData['title']);
-$say('');
-$say((string) $artifactData['excerpt']);
-$say('');
-/** @var array<string, string> $labels */
-$labels = $artifactData['labels'];
-foreach ($labels as $label => $transition) {
-    $say(sprintf('[%s] %s (%s)', strtoupper($label), $label, $transition));
-}
-$say('---');
-$say('');
+$say('The agent wants its work shipped, so it tries to answer its own gate:');
+$decision = ['instance_id' => $instanceId, 'gate_id' => $pending['gate_id'], 'decision' => 'grant'];
 
-if ($decision === null) {
-    fwrite(STDOUT, '? An editor is reviewing this post — [g]rant / [r]eject: ');
-    $answer = strtolower(trim((string) fgets(\STDIN)));
-    $decision = \in_array($answer, ['g', 'grant'], true) ? 'grant' : 'reject';
+$asItself = $registry->call('process_submit_decision', $decision, $agent);
+$say('→ process_submit_decision(grant) … ' . ($asItself->success ? 'ACCEPTED' : "REFUSED · {$asItself->error}"));
+if (!$asItself->success) {
+    $say("  {$asItself->data}");
 }
 
-$submit = $registry->call('process_submit_decision', [
-    'instance_id' => $instanceId,
-    'gate_id' => $pending['gate_id'],
-    'decision' => $decision,
-    'principal' => 'human:you',
-], $ctx);
-if (!$submit->success) {
-    $say("✘ process_submit_decision failed: {$submit->data}");
+// The old way around the rule: say you are somebody else. `process_submit_decision` used to take a
+// `principal` argument and believe it. It takes none now, so the name is simply not read.
+$asSomebodyElse = $registry->call('process_submit_decision', $decision + ['principal' => 'human:you'], $agent);
+$say('→ process_submit_decision(grant, principal: "human:you") … ' . ($asSomebodyElse->success ? 'ACCEPTED' : "REFUSED · {$asSomebodyElse->error}"));
+if (!$asSomebodyElse->success) {
+    $say('  naming a person is not being one: the approver is whoever the house verified, never an argument');
+}
+
+/** @var RepositoryInterface<Post> $posts */
+$posts = $kernel->container()->get(RepositoryInterface::class);
+$status = $posts->find($postId)?->status;
+
+if ($asItself->success || $asSomebodyElse->success || $status !== 'draft') {
+    $say('');
+    $say('✘ the agent approved its own work. That must never happen — this example is broken.');
 
     exit(1);
 }
 
-$finalState = $submit->data['current_state'];
-if ($finalState === 'published') {
-    /** @var RepositoryInterface<Post> $storage */
-    $storage = $kernel->container()->get(RepositoryInterface::class);
-    $post = $storage->find($postId);
-    $status = $post !== null ? strtoupper($post->status) : 'UNKNOWN';
-    $say("✔ GRANT — instance {$instanceId} reached PUBLISHED. Post #{$postId} \"{$postTitle}\" is now {$status}.");
-} else {
-    $say("✘ REJECT — instance {$instanceId} is back at {$finalState} (a fresh gate is open for revision). The loop respected the reviewer's call.");
-}
+$say('');
+$say("✔ post #{$postId} \"{$postTitle}\" is still a DRAFT and its gate is still open. The agent proposed; it does not dispose.");
+$say('');
+$say('  A person decides, in their own session, under their own signature:');
+$say('');
+$say('    php bin/enroll.php     once — makes your demo identity and enrolls it with the house');
+$say('    php bin/decide.php     reads the gate, asks you, signs your answer');
 $say('');
 
 exit(0);
